@@ -5,6 +5,7 @@ from pyspark.sql.functions import from_json, col, from_unixtime, to_date
 spark = SparkSession.builder \
     .appName('Crypto Spark Streaming') \
     .master('spark://spark-master:7077') \
+    .config("spark.cores.max", "2") \
     .config('spark.jars.packages', 'org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4') \
     .config('spark.hadoop.fs.s3a.access.key', 'admin') \
     .config('spark.hadoop.fs.s3a.secret.key', 'supersecretpassword') \

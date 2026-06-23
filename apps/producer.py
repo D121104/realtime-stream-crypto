@@ -47,6 +47,8 @@ def on_message(ws, message):
             value=kafka_value,
         )
 
+        producer.flush()
+
         print(f" Pushed Structure Data | ID: {metadata['event_id']} | Key: {kafka_key}")
     except Exception as e:
         print(f"Error sending message to Kafka: {str(e)}")
