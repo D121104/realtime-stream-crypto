@@ -35,7 +35,7 @@ silver_stream = spark.readStream \
     .schema(silver_schema) \
     .parquet("s3a://crypto-lake/silver/crypto_trades_aggregated")
 
-gold_df = silver_stream
+gold_df = silver_stream.filter(F.col("symbol").isNotNull() & F.col("avg_price").isNotNull())
 
 # 4. Hàm ghi dữ liệu vào ClickHouse sử dụng ForeachBatch (Chuẩn JDBC Spark)
 def write_to_clickhouse(df, epoch_id):
