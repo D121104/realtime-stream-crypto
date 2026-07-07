@@ -63,6 +63,7 @@ aggregate_df = parsed_df \
         col("symbol")
     )\
     .agg(
+        expr("avg(price)").alias("avg_price"),
         expr("min(price)").alias("low_price"),
         expr("max(price)").alias("high_price"),
         expr("sum(quantity)").alias("total_volume"),
@@ -73,6 +74,7 @@ aggregate_df = parsed_df \
         col("window.start").alias("window_start"),
         col("window.end").alias("window_end"),
         col("symbol"),
+        col("avg_price"),
         col("low_price"),
         col("high_price"),
         col("total_volume"),

@@ -2,7 +2,7 @@ name: Crypto Pipeline CI/CD
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "develop" ]
 
 jobs:
   deploy:
@@ -25,6 +25,13 @@ jobs:
           
           echo "$ENV_CONTENTS" > .env
           chmod 600 .env
+
+          export $(grep -v '^#' .env | xargs)
+
+          docker compose up -d
+
+          sleep 5
+          docker exec -i clickhouse clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASS" < scripts/init_clickhouse.sql || true
           
           # 1. Diệt tiến trình Producer ở ngoài VPS
           pgrep -f "producer.py" | grep -v $$ | xargs -r kill || true
