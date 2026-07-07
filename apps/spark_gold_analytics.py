@@ -1,6 +1,6 @@
 import os
 from pyspark.sql import SparkSession
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType, LongType
+from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType, LongType, DateType
 from pyspark.sql import functions as F
 
 minio_user = os.environ.get("MINIO_USER")
@@ -27,7 +27,8 @@ silver_schema = StructType([
     StructField("high_price", DoubleType(), True),
     StructField("total_volume", DoubleType(), True),
     StructField("trade_count", LongType(), True),
-    StructField("vwap",DoubleType(),True )
+    StructField("vwap", DoubleType(), True),
+    StructField("event_date", DateType(), True)
 ])
 
 # 3. Đọc Stream Parquet từ tầng Silver (MinIO)

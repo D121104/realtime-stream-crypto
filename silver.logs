@@ -1,0 +1,13 @@
+0707093513-0001
+26/07/07 09:35:13 INFO StandaloneAppClient$ClientEndpoint: Executor added: app-20260707093513-0001/0 on worker-20260707093208-172.18.0.7-42087 (172.18.0.7:42087) with 2 core(s)
+26/07/07 09:35:13 INFO StandaloneSchedulerBackend: Granted executor ID app-20260707093513-0001/0 on hostPort 172.18.0.7:42087 with 2 core(s), 1024.0 MiB RAM
+26/07/07 09:35:13 INFO Utils: Successfully started service 'org.apache.spark.network.netty.NettyBlockTransferService' on port 36073.
+26/07/07 09:35:13 INFO NettyBlockTransferService: Server created on db0a9b298482:36073
+26/07/07 09:35:13 INFO BlockManager: Using org.apache.spark.storage.RandomBlockReplicationPolicy for block replication policy
+26/07/07 09:35:13 INFO BlockManagerMaster: Registering BlockManager BlockManagerId(driver, db0a9b298482, 36073, None)
+26/07/07 09:35:13 INFO BlockManagerMasterEndpoint: Registering block manager db0a9b298482:36073 with 1048.8 MiB RAM, BlockManagerId(driver, db0a9b298482, 36073, None)
+26/07/07 09:35:13 INFO BlockManagerMaster: Registered BlockManager BlockManagerId(driver, db0a9b298482, 36073, None)
+26/07/07 09:35:13 INFO BlockManager: Initialized BlockManager: BlockManagerId(driver, db0a9b298482, 36073, None)
+26/07/07 09:35:13 INFO StandaloneAppClient$ClientEndpoint: Executor updated: app-20260707093513-0001/0 is now RUNNING
+26/07/07 09:35:13 INFO StandaloneSchedulerBackend: SchedulerBackend is ready for scheduling beginning after reached minRegisteredResourcesRatio: 0.0
+Spark Streaming is running...

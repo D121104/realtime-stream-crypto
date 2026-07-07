@@ -1,21 +1,30 @@
-tail -n 20 gold.log
-	at org.apache.spark.storage.BlockManager$RemoteBlockDownloadFileManager$$anon$2.run(BlockManager.scala:2192)
-Exception in thread "netty-rpc-env-timeout" java.lang.OutOfMemoryError: Java heap space
-26/07/07 09:22:32 ERROR Utils: Uncaught exception in thread executor-heartbeater
-java.lang.OutOfMemoryError: Java heap space
-26/07/07 09:22:36 ERROR Utils: uncaught error in thread Spark Context Cleaner, stopping SparkContext
-java.lang.OutOfMemoryError: Java heap space
-26/07/07 09:22:36 INFO SparkContext: SparkContext is stopping with exitCode 0.
-26/07/07 09:22:36 ERROR Utils: throw uncaught fatal error in thread Spark Context Cleaner
-java.lang.OutOfMemoryError: Java heap space
-Exception in thread "Spark Context Cleaner" java.lang.OutOfMemoryError: Java heap space
-Exception in thread "stream execution thread for [id = 91ea4f87-f73b-4377-982d-7201b31c45b8, runId = 59d3a039-7b12-426b-9b56-04b081bb9be9]" java.lang.OutOfMemoryError: Java heap space
-26/07/07 09:22:40 ERROR SparkContext: Java heap space
-java.lang.OutOfMemoryError: Java heap space
-Exception in thread "stop-spark-context" java.lang.OutOfMemoryError: Java heap space
-26/07/07 09:22:40 INFO DiskBlockManager: Shutdown hook called
-26/07/07 09:22:40 INFO ShutdownHookManager: Shutdown hook called
-26/07/07 09:22:40 INFO ShutdownHookManager: Deleting directory /tmp/spark-b16e966d-8db6-4090-b424-1ae7e1d34cf9/pyspark-b0ffc21f-90c0-44a6-8ef5-6d712d5b1d4d
-26/07/07 09:22:40 INFO ShutdownHookManager: Deleting directory /tmp/spark-7c410132-a347-4af7-a56e-63876668c087
-26/07/07 09:22:40 INFO ShutdownHookManager: Deleting directory /tmp/spark-b16e966d-8db6-4090-b424-1ae7e1d34cf9/userFiles-f1f01e28-3e4f-4d78-8c81-1f9b59b42a59
-26/07/07 09:22:40 INFO ShutdownHookManager: Deleting directory /tmp/spark-b16e966d-8db6-4090-b424-1ae7e1d34cf9
+	at org.apache.spark.sql.execution.streaming.MicroBatchExecution.runActivatedStream(MicroBatchExecution.scala:239)
+	at org.apache.spark.sql.execution.streaming.StreamExecution.$anonfun$runStream$1(StreamExecution.scala:311)
+	at scala.runtime.java8.JFunction0$mcV$sp.apply(JFunction0$mcV$sp.java:23)
+	at org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:900)
+	at org.apache.spark.sql.execution.streaming.StreamExecution.org$apache$spark$sql$execution$streaming$StreamExecution$$runStream(StreamExecution.scala:289)
+	at org.apache.spark.sql.execution.streaming.StreamExecution$$anon$1.$anonfun$run$1(StreamExecution.scala:211)
+	at scala.runtime.java8.JFunction0$mcV$sp.apply(JFunction0$mcV$sp.java:23)
+	at org.apache.spark.JobArtifactSet$.withActiveJobArtifactState(JobArtifactSet.scala:94)
+	at org.apache.spark.sql.execution.streaming.StreamExecution$$anon$1.run(StreamExecution.scala:211)
+26/07/07 09:43:04 INFO MicroBatchExecution: Async log purge executor pool for query [id = 6201d8f7-7460-4176-b7b6-cd2228986c66, runId = 8e822163-8943-483a-91cd-a7047e536759] has been shutdown
+Traceback (most recent call last):
+  File "/opt/spark/apps/spark_gold_analytics.py", line 59, in <module>
+    query.awaitTermination()
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/sql/streaming/query.py", line 221, in awaitTermination
+  File "/opt/spark/python/lib/py4j-0.10.9.7-src.zip/py4j/java_gateway.py", line 1322, in __call__
+  File "/opt/spark/python/lib/pyspark.zip/pyspark/errors/exceptions/captured.py", line 185, in deco
+pyspark.errors.exceptions.captured.StreamingQueryException: [STREAM_FAILED] Query [id = 6201d8f7-7460-4176-b7b6-cd2228986c66, runId = 8e822163-8943-483a-91cd-a7047e536759] terminated with exception: assertion failed: Invalid batch: symbol#0,window_start#1,window_end#2,avg_price#3,low_price#4,high_price#5,total_volume#6,trade_count#7L,vwap#8 != symbol#28,window_start#29,window_end#30,avg_price#31,low_price#32,high_price#33,total_volume#34,trade_count#35L,vwap#36,event_date#37
+26/07/07 09:43:05 INFO SparkContext: Invoking stop() from shutdown hook
+26/07/07 09:43:05 INFO SparkContext: SparkContext is stopping with exitCode 0.
+26/07/07 09:43:05 INFO SparkUI: Stopped Spark web UI at http://db0a9b298482:4042
+26/07/07 09:43:05 INFO MapOutputTrackerMasterEndpoint: MapOutputTrackerMasterEndpoint stopped!
+26/07/07 09:43:05 INFO MemoryStore: MemoryStore cleared
+26/07/07 09:43:05 INFO BlockManager: BlockManager stopped
+26/07/07 09:43:05 INFO BlockManagerMaster: BlockManagerMaster stopped
+26/07/07 09:43:05 INFO OutputCommitCoordinator$OutputCommitCoordinatorEndpoint: OutputCommitCoordinator stopped!
+26/07/07 09:43:05 INFO SparkContext: Successfully stopped SparkContext
+26/07/07 09:43:05 INFO ShutdownHookManager: Shutdown hook called
+26/07/07 09:43:05 INFO ShutdownHookManager: Deleting directory /tmp/spark-b4bd17bd-5e7c-4b2e-8415-3088c04104ba
+26/07/07 09:43:05 INFO ShutdownHookManager: Deleting directory /tmp/spark-337bc477-7315-4fdf-8a28-91a88b36d174
+26/07/07 09:43:05 INFO ShutdownHookManager: Deleting directory /tmp/spark-b4bd17bd-5e7c-4b2e-8415-3088c04104ba/pyspark-2a83da1e-8284-49c0-b5e3-2dfa401d286b
