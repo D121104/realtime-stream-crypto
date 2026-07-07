@@ -26,9 +26,9 @@ jobs:
           echo "$ENV_CONTENTS" > .env
           chmod 600 .env
           
-          pkill -f "[p]roducer.py" || true
-          pkill -f "[s]park_streaming.py" || true
-          pkill -f "[s]park_silver_aggregation.py" || true
+          pgrep -f "apps/producer.py" | grep -v $$ | xargs -r kill || true
+          pgrep -f "apps/spark_streaming.py" | grep -v $$ | xargs -r kill || true
+          pgrep -f "apps/spark_silver_aggregation.py" | grep -v $$ | xargs -r kill || true
           sleep 2
           
           source venv/bin/activate
