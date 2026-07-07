@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS default.gold_crypto_analytics (
     total_volume Float64,
     trade_count Int64,
     vwap Float64,
+    event_date Date,
     created_at DateTime DEFAULT now()
 ) ENGINE = MergeTree()
 ORDER BY (symbol, window_start);
