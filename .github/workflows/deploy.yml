@@ -60,6 +60,11 @@ jobs:
           nohup docker exec -i spark-master /opt/spark/bin/spark-submit \
             --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4 \
             /opt/spark/apps/spark_silver_aggregation.py > silver.log 2>&1 &
+
+          # Bật Gold
+          nohup docker exec -i spark-master /opt/spark/bin/spark-submit \
+            --packages com.clickhouse:clickhouse-jdbc:0.6.5,org.apache.hadoop:hadoop-aws:3.3.4 \
+            /opt/spark/apps/spark_gold_analytics.py > gold.log 2>&1 &
             
           sleep 1
           ps -ef | grep python3 | grep -v grep
