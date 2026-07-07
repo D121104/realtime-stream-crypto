@@ -2,10 +2,15 @@ import uuid
 import json
 import websocket
 from kafka import KafkaProducer
+import os
+from dotenv import load_model, load_dotenv
 
+load_dotenv()
+
+kafka_host = os.getenv("KAFKA_HOST", "localhost")
 
 producer = KafkaProducer(
-    bootstrap_servers=['localhost:9092'],
+    bootstrap_servers=[f'{kafka_host}:9092'],
     value_serializer=lambda v: json.dumps(v).encode('utf-8'),
     key_serializer=lambda k: k.encode('utf-8')
 )

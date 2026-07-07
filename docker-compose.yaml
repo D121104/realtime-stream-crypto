@@ -46,31 +46,34 @@ services:
     container_name: minio
     ports:
       - "9000:9000"
-      - "9001:9001" # Đổi cổng ngoài thành 9005 để chắc chắn không trùng với app khác
+      - "9001:9001"
     environment:
-      MINIO_ROOT_USER: admin
-      MINIO_ROOT_PASSWORD: supersecretpassword
+      MINIO_ROOT_USER: ${MINIO_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_PASS}
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
     networks:
       - data-network
 
-  # 4. APACHE SPARK MASTER (Bản chính thức)
+  # 4. APACHE SPARK MASTER
   spark-master:
     image: apache/spark:3.5.1
     container_name: spark-master
-    user: root # Ép quyền root để tránh lỗi phân quyền thư mục ảo trên Windows
+    user: root
     ports:
       - "8080:8080"
       - "7077:7077"
+    environment:
+      - MINIO_USER=${MINIO_USER}
+      - MINIO_PASS=${MINIO_PASS}
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     volumes:
       - ./apps:/opt/spark/apps
     networks:
       - data-network
 
-  # 5. APACHE SPARK WORKER (Bản chính thức)
+  # 5. APACHE SPARK WORKER
   spark-worker:
     image: apache/spark:3.5.1
     container_name: spark-worker
