@@ -25,6 +25,8 @@ jobs:
           
           echo "$ENV_CONTENTS" > .env
           chmod 600 .env
+
+          docker compose up -d
           
           pgrep -f "apps/producer.py" | grep -v $$ | xargs -r kill || true
           pgrep -f "apps/spark_streaming.py" | grep -v $$ | xargs -r kill || true
