@@ -3,4 +3,4 @@ pip==24.3.1
 websocket-client==1.9.0
 pyspark==3.5.1
 minio==7.2.8
-python_dotenv=1.2.2
+python_dotenv==1.2.2
