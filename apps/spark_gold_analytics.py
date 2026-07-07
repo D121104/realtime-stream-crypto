@@ -1,7 +1,6 @@
 import os
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType, LongType
-from dotenv import load_dotenv
 
 minio_user = os.environ.get("MINIO_USER")
 minio_pass = os.environ.get("MINIO_PASS")
