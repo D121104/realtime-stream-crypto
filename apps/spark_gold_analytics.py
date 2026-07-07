@@ -3,14 +3,16 @@ from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType, LongType
 from dotenv import load_dotenv
 
-load_dotenv()
+minio_user = os.environ.get("MINIO_USER")
+minio_pass = os.environ.get("MINIO_PASS")
+minio_endpoint = os.environ.get("MINIO_ENDPOINT")
 
 # 1. Khởi tạo Spark Session
 spark = SparkSession.builder \
     .appName("Spark-Gold-Analytics") \
-    .config("spark.hadoop.fs.s3a.endpoint", os.environ.get("MINIO_ENDPOINT", "http://minio:9000")) \
-    .config("spark.hadoop.fs.s3a.access.key", os.environ.get("MINIO_USER")) \
-    .config("spark.hadoop.fs.s3a.secret.key", os.environ.get("MINIO_PASS")) \
+    .config("spark.hadoop.fs.s3a.endpoint",  minio_endpoint) \
+    .config("spark.hadoop.fs.s3a.access.key", minio_user) \
+    .config("spark.hadoop.fs.s3a.secret.key", minio_pass) \
     .config("spark.hadoop.fs.s3a.path.style.access", "true") \
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
     .getOrCreate()
