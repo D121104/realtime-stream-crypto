@@ -105,3 +105,4 @@ services:
 volumes:
   kafka_data:
   minio_data:
+  clickhouse-data:
