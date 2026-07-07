@@ -21,50 +21,67 @@ jobs:
         script: |
           cd ~/realtime-stream-crypto
           
+          # 1. Tự động fetch và ép Cloud chuyển sang đúng nhánh vừa push code
           git fetch origin
           git checkout ${{ github.ref_name }}
           git reset --hard origin/${{ github.ref_name }}
           
           echo "$ENV_CONTENTS" > .env
           chmod 600 .env
-
+          
+          # 2. Nạp biến môi trường từ .env ra máy ngoài VPS để chuẩn bị ép biến
           export $(grep -v '^#' .env | xargs)
-
+          
           docker compose up -d
-
           sleep 5
+          
+          # 3. Tự động khởi tạo bảng ClickHouse
           docker exec -i clickhouse clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASS" < scripts/init_clickhouse.sql || true
           
-          # 1. Diệt tiến trình Producer ở ngoài VPS
+          # 4. Quét sạch tất cả tiến trình cũ để tránh tranh chấp log/checkpoint
           pgrep -f "producer.py" | grep -v $$ | xargs -r kill || true
-          
-          # 2. CHUI VÀO TRONG DOCKER ĐỂ DIỆT TẬN GỐC TIẾN TRÌNH SPARK NGẦM
           docker exec spark-master pkill -f "spark_streaming.py" || true
           docker exec spark-master pkill -f "spark_silver_aggregation.py" || true
+          docker exec spark-master pkill -f "spark_gold_analytics.py" || true
           sleep 5
           
           source venv/bin/activate
           pip install --upgrade pip
           pip install -r requirements.txt
           
-          # Bật lại Producer
+          # 5. Khởi chạy mạch nguồn Producer
           nohup python3 apps/producer.py > producer.log 2>&1 &
           
-          # Bật Bronze
-          nohup docker exec -i spark-master /opt/spark/bin/spark-submit \
+          # 6. Khởi chạy tầng BRONZE
+          nohup docker exec -i \
+            -e MINIO_ENDPOINT="$MINIO_ENDPOINT" \
+            -e MINIO_USER="$MINIO_USER" \
+            -e MINIO_PASS="$MINIO_PASS" \
+            spark-master /opt/spark/bin/spark-submit \
             --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4 \
             /opt/spark/apps/spark_streaming.py > bronze.log 2>&1 &
           
-          # Xếp hàng đợi 15 giây né tranh chấp tải Jar và Checkpoint
           sleep 15
           
-          # Bật Silver
-          nohup docker exec -i spark-master /opt/spark/bin/spark-submit \
+          # 7. Khởi chạy tầng SILVER
+          nohup docker exec -i \
+            -e MINIO_ENDPOINT="$MINIO_ENDPOINT" \
+            -e MINIO_USER="$MINIO_USER" \
+            -e MINIO_PASS="$MINIO_PASS" \
+            spark-master /opt/spark/bin/spark-submit \
             --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4 \
             /opt/spark/apps/spark_silver_aggregation.py > silver.log 2>&1 &
-
-          # Bật Gold
-          nohup docker exec -i spark-master /opt/spark/bin/spark-submit \
+            
+          sleep 15
+          
+          # 8. Khởi chạy tầng GOLD
+          nohup docker exec -i \
+            -e MINIO_ENDPOINT="$MINIO_ENDPOINT" \
+            -e MINIO_USER="$MINIO_USER" \
+            -e MINIO_PASS="$MINIO_PASS" \
+            -e CLICKHOUSE_USER="$CLICKHOUSE_USER" \
+            -e CLICKHOUSE_PASS="$CLICKHOUSE_PASS" \
+            spark-master /opt/spark/bin/spark-submit \
             --packages com.clickhouse:clickhouse-jdbc:0.6.5,org.apache.hadoop:hadoop-aws:3.3.4 \
             /opt/spark/apps/spark_gold_analytics.py > gold.log 2>&1 &
             
