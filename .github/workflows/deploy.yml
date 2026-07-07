@@ -21,7 +21,9 @@ jobs:
         script: |
           cd ~/realtime-stream-crypto
           
-          git pull origin main
+          git fetch origin
+          git checkout ${{ github.ref_name }}
+          git reset --hard origin/${{ github.ref_name }}
           
           echo "$ENV_CONTENTS" > .env
           chmod 600 .env
