@@ -96,7 +96,7 @@ services:
       - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASS}
     ports:
       - "8123:8123"
-      - "9000:9000"
+      - "9003:9000"
     volumes:
       - clickhouse-data:/var/lib/clickhouse
     networks:
