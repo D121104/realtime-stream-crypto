@@ -25,26 +25,31 @@ jobs:
           
           echo "$ENV_CONTENTS" > .env
           chmod 600 .env
-
-          docker compose up -d
           
-          pgrep -f "apps/producer.py" | grep -v $$ | xargs -r kill || true
-          pgrep -f "apps/spark_streaming.py" | grep -v $$ | xargs -r kill || true
-          pgrep -f "apps/spark_silver_aggregation.py" | grep -v $$ | xargs -r kill || true
-          sleep 2
+          # 1. Diệt tiến trình Producer ở ngoài VPS
+          pgrep -f "producer.py" | grep -v $$ | xargs -r kill || true
+          
+          # 2. CHUI VÀO TRONG DOCKER ĐỂ DIỆT TẬN GỐC TIẾN TRÌNH SPARK NGẦM
+          docker exec spark-master pkill -f "spark_streaming.py" || true
+          docker exec spark-master pkill -f "spark_silver_aggregation.py" || true
+          sleep 5
           
           source venv/bin/activate
           pip install --upgrade pip
           pip install -r requirements.txt
           
+          # Bật lại Producer
           nohup python3 apps/producer.py > producer.log 2>&1 &
           
+          # Bật Bronze
           nohup docker exec -i spark-master /opt/spark/bin/spark-submit \
             --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4 \
             /opt/spark/apps/spark_streaming.py > bronze.log 2>&1 &
           
+          # Xếp hàng đợi 15 giây né tranh chấp tải Jar và Checkpoint
           sleep 15
-
+          
+          # Bật Silver
           nohup docker exec -i spark-master /opt/spark/bin/spark-submit \
             --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4 \
             /opt/spark/apps/spark_silver_aggregation.py > silver.log 2>&1 &
