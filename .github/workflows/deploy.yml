@@ -58,6 +58,7 @@ jobs:
             -e MINIO_USER="$MINIO_USER" \
             -e MINIO_PASS="$MINIO_PASS" \
             spark-master /opt/spark/bin/spark-submit \
+            --driver-memory 2g \
             --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4 \
             /opt/spark/apps/spark_streaming.py > bronze.log 2>&1 &
           
@@ -69,6 +70,7 @@ jobs:
             -e MINIO_USER="$MINIO_USER" \
             -e MINIO_PASS="$MINIO_PASS" \
             spark-master /opt/spark/bin/spark-submit \
+            --driver-memory 2g \
             --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4 \
             /opt/spark/apps/spark_silver_aggregation.py > silver.log 2>&1 &
             
@@ -82,6 +84,7 @@ jobs:
             -e CLICKHOUSE_USER="$CLICKHOUSE_USER" \
             -e CLICKHOUSE_PASS="$CLICKHOUSE_PASS" \
             spark-master /opt/spark/bin/spark-submit \
+            --driver-memory 4g \
             --packages com.clickhouse:clickhouse-jdbc:0.6.5,org.apache.hadoop:hadoop-aws:3.3.4 \
             /opt/spark/apps/spark_gold_analytics.py > gold.log 2>&1 &
             
