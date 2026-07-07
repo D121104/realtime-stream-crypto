@@ -1,6 +1,7 @@
 import os
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType, LongType
+from pyspark.sql import functions as F
 
 minio_user = os.environ.get("MINIO_USER")
 minio_pass = os.environ.get("MINIO_PASS")
@@ -34,6 +35,8 @@ silver_stream = spark.readStream \
     .schema(silver_schema) \
     .parquet("s3a://crypto-lake/silver/crypto_trades_aggregated")
 
+gold_df = silver_stream.withColumn("event_date", F.to_date(F.col("window_start")))
+
 # 4. Hàm ghi dữ liệu vào ClickHouse sử dụng ForeachBatch (Chuẩn JDBC Spark)
 def write_to_clickhouse(df, epoch_id):
     df.write \
@@ -47,7 +50,7 @@ def write_to_clickhouse(df, epoch_id):
         .save()
 
 # 5. Kích hoạt luồng Stream sang Gold
-query = silver_stream.writeStream \
+query = gold_df.writeStream \
     .foreachBatch(write_to_clickhouse) \
     .option("checkpointLocation", "s3a://crypto-lake/checkpoints/gold/") \
     .start()
