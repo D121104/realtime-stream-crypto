@@ -1,14 +1,18 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, StructField, StringType, TimestampType, LongType, DoubleType
 from pyspark.sql.functions import from_json, col, from_unixtime, to_date
+import os
+
+minio_user = os.environ.get("MINIO_USER")
+minio_pass = os.environ.get("MINIO_PASS")
 
 spark = SparkSession.builder \
     .appName('Crypto Spark Streaming') \
     .master('spark://spark-master:7077') \
     .config("spark.cores.max", "2") \
     .config('spark.jars.packages', 'org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4') \
-    .config('spark.hadoop.fs.s3a.access.key', 'admin') \
-    .config('spark.hadoop.fs.s3a.secret.key', 'supersecretpassword') \
+    .config('spark.hadoop.fs.s3a.access.key', minio_user) \
+    .config('spark.hadoop.fs.s3a.secret.key', minio_pass) \
     .config('spark.hadoop.fs.s3a.endpoint', 'http://minio:9000') \
     .config('spark.hadoop.fs.s3a.path.style.access', 'true') \
     .config('spark.hadoop.fs.s3a.impl', 'org.apache.hadoop.fs.s3a.S3AFileSystem') \

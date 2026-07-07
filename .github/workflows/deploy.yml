@@ -1,0 +1,49 @@
+name: Crypto Pipeline CI/CD
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Deploy to Oracle Cloud
+      uses: appleboy/ssh-action@v1.0.3
+      env:
+        ENV_CONTENTS: ${{ secrets.ENV_CONTENTS }}
+      with:
+        host: ${{ secrets.CLOUD_IP }}
+        username: ubuntu
+        key: ${{ secrets.CLOUD_SSH_KEY }}
+        envs: ENV_CONTENTS
+        script: |
+          cd ~/realtime-stream-crypto
+          
+          git pull origin main
+          
+          echo "$ENV_CONTENTS" > .env
+          chmod 600 .env
+          
+          pkill -f producer.py || true
+          pkill -f spark_streaming.py || true
+          pkill -f spark_silver_aggregation.py || true
+          sleep 2
+          
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          
+          nohup python3 apps/producer.py > producer.log 2>&1 &
+          
+          nohup docker exec -i spark-master /opt/spark/bin/spark-submit \
+            --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4 \
+            /opt/spark/apps/spark_streaming.py > bronze.log 2>&1 &
+          
+          nohup docker exec -i spark-master /opt/spark/bin/spark-submit \
+            --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4 \
+            /opt/spark/apps/spark_silver_aggregation.py > silver.log 2>&1 &
+            
+          sleep 1
+          ps -ef | grep python3 | grep -v grep
