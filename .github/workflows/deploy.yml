@@ -85,7 +85,7 @@ jobs:
             -e CLICKHOUSE_PASS="$CLICKHOUSE_PASS" \
             spark-master /opt/spark/bin/spark-submit \
             --driver-memory 4g \
-            --packages io.delta:delta-spark_2.12:3.2.0,com.clickhouse:clickhouse-jdbc:0.6.5,org.apache.hadoop:hadoop-aws:3.3.4 \
+            --packages com.clickhouse:clickhouse-jdbc:0.6.5:all,org.apache.hadoop:hadoop-aws:3.3.4,io.delta:delta-spark_2.12:3.2.0 \
             /opt/spark/apps/spark_gold_analytics.py > gold.log 2>&1 &
             
           sleep 1
