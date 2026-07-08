@@ -12,6 +12,8 @@ spark = SparkSession.builder \
     .master("spark://spark-master:7077") \
     .config("spark.cores.max", "2") \
     .config("spark.sql.caseSensitive", "true") \
+    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
+    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
     .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4") \
     .config("spark.hadoop.fs.s3a.access.key", minio_user) \
     .config("spark.hadoop.fs.s3a.secret.key", minio_pass) \
@@ -85,10 +87,10 @@ aggregate_df = parsed_df \
     )
 
 query = aggregate_df.writeStream\
-    .format("parquet")\
-    .outputMode("append")\
-    .option("path", "s3a://crypto-lake/silver/crypto_trades_aggregated")\
-    .option("checkpointLocation", "s3a://crypto-lake/checkpoints/crypto_trades_aggregated")\
+    .format("delta")\
+    .outputMode("complete")\
+    .option("path", "s3a://crypto-lake/silver_delta/crypto_trades_aggregated")\
+    .option("checkpointLocation", "s3a://crypto-lake/checkpoints/silver_delta")\
     .partitionBy("event_date")\
     .trigger(processingTime="60 seconds")\
     .start()

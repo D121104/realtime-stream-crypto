@@ -10,6 +10,8 @@ minio_endpoint = os.environ.get("MINIO_ENDPOINT")
 # 1. Khởi tạo Spark Session
 spark = SparkSession.builder \
     .appName("Spark-Gold-Analytics") \
+    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
+    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
     .config("spark.hadoop.fs.s3a.endpoint",  minio_endpoint) \
     .config("spark.hadoop.fs.s3a.access.key", minio_user) \
     .config("spark.hadoop.fs.s3a.secret.key", minio_pass) \
@@ -53,7 +55,7 @@ def write_to_clickhouse(df, epoch_id):
 # 5. Kích hoạt luồng Stream sang Gold
 query = gold_df.writeStream \
     .foreachBatch(write_to_clickhouse) \
-    .option("checkpointLocation", "s3a://crypto-lake/checkpoints/gold/") \
+    .option("checkpointLocation", "s3a://crypto-lake/checkpoints/gold_delta") \
     .start()
 
 print("Spark Gold Analytics Streaming is running...")
