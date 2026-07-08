@@ -16,11 +16,11 @@ spark = SparkSession.builder \
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
     .getOrCreate()
 
-old_silver_path = f"{minio_endpoint}/crypto-lake/silver/crypto_trades_aggregated"
-new_silver_path = f"{minio_endpoint}/crypto-lake/silver_delta/crypto_trades_aggregated"
+old_silver_path = f"s3a://crypto-lake/silver/crypto_trades_aggregated"
+new_silver_path = f"s3a://crypto-lake/silver_delta/crypto_trades_aggregated"
 
-old_bronze_path = f"{minio_endpoint}/crypto-lake/bronze/crypto_trades"
-new_bronze_path = f"{minio_endpoint}/crypto-lake/bronze_delta/crypto_trades"
+old_bronze_path = f"s3a://crypto-lake/bronze/crypto_trades"
+new_bronze_path = f"s3a://crypto-lake/bronze_delta/crypto_trades"
 
 try:
     old_silver_df = spark.read.parquet(old_silver_path)

@@ -25,8 +25,8 @@ def main():
 
     yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
     delta_tables = {
-        "Bronze Layer": f"{minio_endpoint}/crypto-lake/bronze_delta/crypto_trades",
-        "Silver Layer": f"{minio_endpoint}/crypto-lake/silver_delta/crypto_trades_aggregated"
+        "Bronze Layer": f"s3a://crypto-lake/bronze_delta/crypto_trades",
+        "Silver Layer": f"s3a://crypto-lake/silver_delta/crypto_trades_aggregated"
     }
 
     for name, path in delta_tables.items():

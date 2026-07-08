@@ -6,6 +6,8 @@ from pyspark.sql import functions as F
 minio_user = os.environ.get("MINIO_USER")
 minio_pass = os.environ.get("MINIO_PASS")
 minio_endpoint = os.environ.get("MINIO_ENDPOINT")
+clickhouse_user = os.environ.get("CLICKHOUSE_USER")
+clickhouse_pass = os.environ.get("CLICKHOUSE_PASS")
 
 # 1. Khởi tạo Spark Session
 spark = SparkSession.builder \
@@ -46,8 +48,8 @@ def write_to_clickhouse(df, epoch_id):
         .format("jdbc") \
         .option("url", "jdbc:clickhouse://clickhouse:8123/default") \
         .option("dbtable", "gold_crypto_analytics") \
-        .option("user", os.environ.get("CLICKHOUSE_USER")) \
-        .option("password", os.environ.get("CLICKHOUSE_PASS")) \
+        .option("user", clickhouse_user) \
+        .option("password", clickhouse_pass) \
         .option("driver", "com.clickhouse.jdbc.ClickHouseDriver") \
         .mode("append") \
         .save()
