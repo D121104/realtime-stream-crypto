@@ -113,7 +113,7 @@ services:
       - CLICKHOUSE_PASS=${CLICKHOUSE_PASS}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASS}
     volumes:
-      - grafana-storage:/var/lib/grafana
+      - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
     networks:
       - data-network
@@ -123,3 +123,4 @@ volumes:
   kafka_data:
   minio_data:
   clickhouse-data:
+  grafana-data:
