@@ -113,6 +113,8 @@ services:
     environment:
       - CLICKHOUSE_PASS=${CLICKHOUSE_PASS}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASS}
+    entrypoint: >
+      sh -c "grafana cli plugins install grafana-clickhouse-datasource && exec /run.sh"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
