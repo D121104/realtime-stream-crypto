@@ -107,6 +107,7 @@ services:
   grafana:
     image: grafana/grafana-oss:latest
     container_name: grafana
+    user: "root"
     ports:
       - "3000:3000"
     environment:
