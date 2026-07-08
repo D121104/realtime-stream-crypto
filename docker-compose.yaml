@@ -88,6 +88,7 @@ services:
     networks:
       - data-network
 
+  # 6. ClickHouse
   clickhouse:
     image: clickhouse/clickhouse-server:24.3
     container_name: clickhouse
@@ -101,6 +102,22 @@ services:
       - clickhouse-data:/var/lib/clickhouse
     networks:
       - data-network
+
+  # 7. Grafana
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - CLICKHOUSE_PASS=${CLICKHOUSE_PASS}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASS}
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - data-network
+    restart: unless-stopped
 
 volumes:
   kafka_data:
