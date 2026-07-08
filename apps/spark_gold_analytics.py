@@ -38,7 +38,7 @@ silver_schema = StructType([
 # 3. Đọc Stream Parquet từ tầng Silver (MinIO)
 silver_stream = spark.readStream \
     .schema(silver_schema) \
-    .parquet("s3a://crypto-lake/silver/crypto_trades_aggregated")
+    .parquet("s3a://crypto-lake/silver_delta/crypto_trades_aggregated")
 
 gold_df = silver_stream.filter(F.col("symbol").isNotNull() & F.col("avg_price").isNotNull())
 
