@@ -66,7 +66,7 @@ final_df = parsed_df.select(
 
 query = final_df.writeStream \
     .format("delta") \
-    .outputMode("complete") \
+    .outputMode("append") \
     .option("path", "s3a://crypto-lake/bronze_delta/crypto_trades") \
     .option("checkpointLocation", "s3a://crypto-lake/checkpoints/bronze_delta") \
     .partitionBy("event_date", "symbol") \
