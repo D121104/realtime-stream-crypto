@@ -27,7 +27,7 @@ minio_endpoint = os.environ.get("MINIO_ENDPOINT", "http://minio:9000")
 spark = (
     SparkSession.builder.appName("Crypto-Bronze-Streaming")
     .master(os.environ.get("SPARK_MASTER_URL", "spark://spark-master:7077"))
-    .config("spark.cores.max", "2")
+    .config("spark.cores.max", "4")
     .config(
         "spark.jars.packages",
         "io.delta:delta-spark_2.12:3.2.0,"
@@ -109,6 +109,9 @@ trades = (
         col("json_data.payload.m").cast("boolean").alias("is_buyer_maker"),
     )
     .withColumn("event_time", from_unixtime(col("event_timestamp_ms") / 1000).cast("timestamp"))
+    # Keep the legacy column during the Bronze schema transition so existing Delta
+    # tables can accept new rows without replacing historical data.
+    .withColumn("event_timestamp", col("event_time"))
     .withColumn("event_date", to_date(col("event_time")))
 )
 

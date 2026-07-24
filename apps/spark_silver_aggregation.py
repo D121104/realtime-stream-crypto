@@ -16,7 +16,7 @@ minio_endpoint = os.environ.get("MINIO_ENDPOINT", "http://minio:9000")
 spark = (
     SparkSession.builder.appName("Crypto-Silver-Aggregation")
     .master(os.environ.get("SPARK_MASTER_URL", "spark://spark-master:7077"))
-    .config("spark.cores.max", "2")
+    .config("spark.cores.max", "4")
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
     .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
     .config("spark.jars.packages", "io.delta:delta-spark_2.12:3.2.0,org.apache.hadoop:hadoop-aws:3.3.4")
@@ -30,6 +30,11 @@ spark = (
 spark.sparkContext.setLogLevel("WARN")
 
 bronze_stream = spark.readStream.format("delta").load(BRONZE_PATH)
+
+# Historical Bronze rows used event_timestamp. Normalize them at read time so the
+# Silver stream remains compatible while Bronze writes both schemas.
+if "event_time" not in bronze_stream.columns:
+    bronze_stream = bronze_stream.withColumn("event_time", F.col("event_timestamp"))
 
 aggregated_trades = (
     bronze_stream.filter(
