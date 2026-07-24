@@ -40,8 +40,7 @@ spark = (
 )
 spark.sparkContext.setLogLevel("WARN")
 
-jdbc_options = {
-    "url": clickhouse_url,
+jdbc_properties = {
     "user": clickhouse_user,
     "password": clickhouse_pass,
     "driver": "com.clickhouse.jdbc.ClickHouseDriver",
@@ -65,7 +64,11 @@ def latest_prices_for(symbols):
         WHERE symbol IN ({quoted_symbols})
         GROUP BY symbol
     ) AS latest_prices"""
-    return spark.read.jdbc(properties=jdbc_options, table=query)
+    return spark.read.jdbc(
+        url=clickhouse_url,
+        table=query,
+        properties=jdbc_properties,
+    )
 
 
 def write_to_clickhouse(batch_df, batch_id):
@@ -100,7 +103,12 @@ def write_to_clickhouse(batch_df, batch_id):
         )
     )
 
-    analytics.write.jdbc(properties=jdbc_options, table=ANALYTICS_TABLE, mode="append")
+    analytics.write.jdbc(
+        url=clickhouse_url,
+        table=ANALYTICS_TABLE,
+        mode="append",
+        properties=jdbc_properties,
+    )
 
     alerts = (
         analytics.filter(F.abs(F.col("price_change_pct")) >= F.lit(alert_threshold_pct))
@@ -118,7 +126,12 @@ def write_to_clickhouse(batch_df, batch_id):
         )
     )
     if not alerts.isEmpty():
-        alerts.write.jdbc(properties=jdbc_options, table=ALERTS_TABLE, mode="append")
+        alerts.write.jdbc(
+            url=clickhouse_url,
+            table=ALERTS_TABLE,
+            mode="append",
+            properties=jdbc_properties,
+        )
 
 
 silver_stream = spark.readStream.format("delta").load(SILVER_PATH)
