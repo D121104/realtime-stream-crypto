@@ -3,6 +3,7 @@
 import os
 
 from pyspark.sql import SparkSession
+from pyspark.sql import Window
 from pyspark.sql import functions as F
 from pyspark.sql.types import DoubleType, StringType, StructField, StructType, TimestampType
 
@@ -88,8 +89,24 @@ def write_to_clickhouse(batch_df, batch_id):
 
     symbols = [row.symbol for row in current.select("symbol").distinct().collect()]
     previous = latest_prices_for(symbols)
+
+    # Seed each symbol with its last persisted window, then calculate lag over the
+    # ordered union. This preserves the correct comparison when a micro-batch
+    # contains multiple one-minute windows for the same symbol.
+    seed_rows = previous.filter(F.col("previous_window_start").isNotNull()).select(
+        "symbol",
+        F.col("previous_window_start").alias("window_start"),
+        F.col("previous_vwap").alias("vwap"),
+        F.lit(True).alias("is_seed"),
+    )
+    batch_rows = current.select(
+        "symbol", "window_start", "vwap", F.lit(False).alias("is_seed"),
+        "window_end", "avg_price", "low_price", "high_price", "total_volume", "trade_count", "event_date",
+    )
+    ordered = seed_rows.unionByName(batch_rows, allowMissingColumns=True)
     analytics = (
-        current.join(previous, "symbol", "left")
+        ordered.withColumn("previous_vwap", F.lag("vwap").over(Window.partitionBy("symbol").orderBy("window_start")))
+        .filter(~F.col("is_seed"))
         .withColumn(
             "price_change_pct",
             F.when(

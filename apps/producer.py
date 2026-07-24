@@ -4,8 +4,6 @@ import json
 import logging
 import os
 import time
-import uuid
-
 import websocket
 from dotenv import load_dotenv
 from kafka import KafkaProducer
@@ -44,13 +42,20 @@ def on_message(_ws, message):
             logger.warning("Ignoring malformed Binance event: %s", message[:300])
             return
 
+        aggregate_trade_id = payload.get("a")
+        if aggregate_trade_id is None:
+            logger.warning("Ignoring Binance event without aggregate trade ID: %s", message[:300])
+            return
+
+        # Binance aggregate-trade IDs are stable across producer reconnects and Kafka
+        # replays.  A deterministic source key makes every downstream merge idempotent.
         event = {
             "metadata": {
-                "event_id": str(uuid.uuid4()),
+                "event_id": f"binance:aggTrade:{symbol.lower()}:{aggregate_trade_id}",
                 "event_timestamp": payload.get("E"),
                 "event_type": stream_name.split("@", maxsplit=1)[-1],
                 "source": "binance_websocket",
-                "schema_version": "1.0",
+                "schema_version": "2.0",
             },
             "payload": payload,
         }

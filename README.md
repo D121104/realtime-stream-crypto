@@ -102,3 +102,7 @@ MVP dùng contract Delta Bronze → Silver → Gold mới. Khi chuyển từ phi
 5. Chạy lại Bronze, Silver, Gold theo thứ tự.
 
 Không xóa checkpoint của pipeline đang chạy bình thường: checkpoint là cơ chế khôi phục offset và xử lý lại an toàn.
+
+## Recovery và replay an toàn
+
+Producer phát `event_id` tất định từ Binance aggregate trade ID; Bronze merge theo khóa này để Kafka replay hoặc producer reconnect không tạo giao dịch logic trùng. Quy trình replay/backfill tách biệt checkpoint, output và bảng staging khỏi production, kèm checklist đối soát và promote, được mô tả tại [`docs/p0-data-recovery-runbook.md`](docs/p0-data-recovery-runbook.md).

@@ -36,6 +36,7 @@ spark = (
     )
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
     .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+    .config("spark.databricks.delta.schema.autoMerge.enabled", "true")
     .config("spark.hadoop.fs.s3a.access.key", minio_user)
     .config("spark.hadoop.fs.s3a.secret.key", minio_pass)
     .config("spark.hadoop.fs.s3a.endpoint", minio_endpoint)
@@ -66,6 +67,7 @@ trade_schema = StructType(
                     StructField("e", StringType()),
                     StructField("E", LongType()),
                     StructField("s", StringType()),
+                    StructField("a", LongType()),
                     StructField("p", StringType()),
                     StructField("q", StringType()),
                     StructField("m", StringType()),
@@ -104,6 +106,7 @@ trades = (
         col("json_data.metadata.source").alias("source"),
         col("json_data.metadata.schema_version").alias("schema_version"),
         col("json_data.payload.s").alias("symbol"),
+        col("json_data.payload.a").alias("aggregate_trade_id"),
         col("json_data.payload.p").cast("double").alias("price"),
         col("json_data.payload.q").cast("double").alias("quantity"),
         col("json_data.payload.m").cast("boolean").alias("is_buyer_maker"),
@@ -153,7 +156,13 @@ def write_bronze_and_quarantine(batch_df, batch_id):
             .execute()
         )
     else:
-        valid_events.write.format("delta").mode("append").partitionBy("event_date", "symbol").save(BRONZE_PATH)
+        (
+            valid_events.write.format("delta")
+            .option("mergeSchema", "true")
+            .mode("append")
+            .partitionBy("event_date", "symbol")
+            .save(BRONZE_PATH)
+        )
 
 
 query = (
