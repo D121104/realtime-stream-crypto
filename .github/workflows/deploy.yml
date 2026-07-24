@@ -33,17 +33,48 @@ jobs:
           export $(grep -v '^#' .env | xargs)
           
           docker compose up -d
-          sleep 5
+
+          wait_for_service() {
+            service="$1"
+            timeout_seconds="${2:-120}"
+            elapsed=0
+            while [ "$elapsed" -lt "$timeout_seconds" ]; do
+              health="$(docker inspect --format='{{.State.Health.Status}}' "$service" 2>/dev/null || true)"
+              if [ "$health" = "healthy" ]; then
+                echo "$service is healthy"
+                return 0
+              fi
+              if [ "$health" = "unhealthy" ]; then
+                echo "$service became unhealthy" >&2
+                return 1
+              fi
+              sleep 5
+              elapsed=$((elapsed + 5))
+            done
+            echo "Timed out waiting for $service to become healthy" >&2
+            return 1
+          }
+
+          wait_for_service minio
+          wait_for_service spark-master
+          wait_for_service clickhouse
+          wait_for_service grafana 180
           
-          # 3. Tự động khởi tạo bảng ClickHouse
-          docker exec -i clickhouse clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASS" < scripts/init_clickhouse.sql || true
+          # 3. Tự động khởi tạo bảng ClickHouse sau khi dịch vụ sẵn sàng.
+          docker exec -i clickhouse clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASS" < scripts/init_clickhouse.sql
           
-          # 4. Quét sạch tất cả tiến trình cũ để tránh tranh chấp log/checkpoint
+          # 4. Quét tiến trình cũ để tránh tranh chấp checkpoint. Chờ chúng kết thúc
+          # trước khi nộp job replacement.
           pgrep -f "producer.py" | grep -v $$ | xargs -r kill || true
           docker exec spark-master pkill -f "spark_streaming.py" || true
           docker exec spark-master pkill -f "spark_silver_aggregation.py" || true
           docker exec spark-master pkill -f "spark_gold_analytics.py" || true
-          sleep 5
+          for attempt in $(seq 1 12); do
+            if ! docker exec spark-master pgrep -f "spark_(streaming|silver_aggregation|gold_analytics).py" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 5
+          done
           
           source venv/bin/activate
           pip install --upgrade pip
@@ -62,9 +93,8 @@ jobs:
             --packages io.delta:delta-spark_2.12:3.2.0,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4 \
             /opt/spark/apps/spark_streaming.py > bronze.log 2>&1 &
           
-          sleep 15
-          
-          # 7. Khởi chạy tầng SILVER
+          # 7. Khởi chạy tầng SILVER. Delta checkpoint đảm bảo job xử lý input
+          # đã commit mà không cần sleep phụ thuộc thứ tự.
           nohup docker exec -i \
             -e MINIO_ENDPOINT="$MINIO_ENDPOINT" \
             -e MINIO_USER="$MINIO_USER" \
@@ -74,9 +104,7 @@ jobs:
             --packages io.delta:delta-spark_2.12:3.2.0,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4 \
             /opt/spark/apps/spark_silver_aggregation.py > silver.log 2>&1 &
             
-          sleep 15
-          
-          # 8. Khởi chạy tầng GOLD
+          # 8. Khởi chạy tầng GOLD.
           nohup docker exec -i \
             -e MINIO_ENDPOINT="$MINIO_ENDPOINT" \
             -e MINIO_USER="$MINIO_USER" \
@@ -87,6 +115,9 @@ jobs:
             --driver-memory 4g \
             --packages com.clickhouse:clickhouse-jdbc:0.6.5,org.apache.httpcomponents.client5:httpclient5:5.2.1,org.apache.hadoop:hadoop-aws:3.3.4,io.delta:delta-spark_2.12:3.2.0 \
             /opt/spark/apps/spark_gold_analytics.py > gold.log 2>&1 &
-            
-          sleep 1
-          ps -ef | grep python3 | grep -v grep
+
+          sleep 3
+          pgrep -f "producer.py" >/dev/null
+          docker exec spark-master pgrep -f "spark_streaming.py" >/dev/null
+          docker exec spark-master pgrep -f "spark_silver_aggregation.py" >/dev/null
+          docker exec spark-master pgrep -f "spark_gold_analytics.py" >/dev/null
