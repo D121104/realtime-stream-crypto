@@ -56,6 +56,26 @@
       "targets": [{"database": "default", "format": 1, "queryType": "sql", "rawSql": "SELECT window_start, symbol, direction, severity, round(price_change_pct, 3) AS price_change_pct, round(observed_price, 4) AS observed_price, threshold_pct\nFROM crypto_price_alerts FINAL\nWHERE $__timeFilter(window_start) AND symbol IN (${symbol:singlequote})\nORDER BY window_start DESC\nLIMIT 100", "refId": "A"}],
       "title": "Cảnh báo biến động giá",
       "type": "table"
+    },
+    {
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "ClickHouse"},
+      "fieldConfig": {"defaults": {"unit": "s", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 120}, {"color": "red", "value": 300}]}}, "overrides": []},
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 25},
+      "id": 6,
+      "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"database": "default", "format": 1, "queryType": "sql", "rawSql": "SELECT toUnixTimestamp(now()) - toUnixTimestamp(max(window_start)) AS gold_freshness_seconds\nFROM gold_crypto_analytics_v2 FINAL", "refId": "A"}],
+      "title": "Độ trễ dữ liệu Gold",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "ClickHouse"},
+      "fieldConfig": {"defaults": {"unit": "percent", "decimals": 2, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 1}, {"color": "red", "value": 5}]}}, "overrides": []},
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 25},
+      "id": 7,
+      "options": {"colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "auto"},
+      "targets": [{"database": "default", "format": 1, "queryType": "sql", "rawSql": "SELECT 100.0 * countIf(total_volume <= 0 OR trade_count <= 0 OR vwap < low_price OR vwap > high_price) / nullIf(count(), 0) AS invalid_window_pct\nFROM gold_crypto_analytics_v2 FINAL\nWHERE window_start >= now() - INTERVAL 1 HOUR", "refId": "A"}],
+      "title": "Tỷ lệ cửa sổ Gold không hợp lệ (1 giờ)",
+      "type": "stat"
     }
   ],
   "refresh": "30s",
@@ -66,5 +86,5 @@
   "timezone": "browser",
   "title": "Crypto Realtime Overview",
   "uid": "crypto-realtime-overview",
-  "version": 3
+  "version": 4
 }

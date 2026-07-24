@@ -82,6 +82,8 @@ Grafana tự provision datasource, dashboard **Crypto Realtime Overview** và al
 - Dashboard: `http://localhost:3000`, folder **Crypto Streaming**.
 - Panel: VWAP, biến động phần trăm, volume, trade count và bảng lịch sử alert.
 - Alert rule: kích hoạt nếu biến động tuyệt đối lớn nhất trong năm phút gần nhất lớn hơn **1%**. Điều chỉnh ngưỡng phát event alert trong Gold bằng `ALERT_PRICE_CHANGE_PCT`; nếu thay đổi ngưỡng này, cập nhật tương ứng rule tại [`grafana/provisioning/alerting/crypto-price-volatility.yml`](grafana/provisioning/alerting/crypto-price-volatility.yml).
+- Alert vận hành: [`grafana/provisioning/alerting/crypto-pipeline-freshness.yml`](grafana/provisioning/alerting/crypto-pipeline-freshness.yml) kích hoạt khi Gold không có cửa sổ mới hơn năm phút; thực hiện triage/recovery theo [`docs/p0-data-recovery-runbook.md`](docs/p0-data-recovery-runbook.md).
+- Dashboard có thêm panel độ trễ Gold và tỷ lệ aggregate Gold không hợp lệ trong một giờ, phục vụ theo dõi freshness và chất lượng dữ liệu.
 
 ## Xác minh nhanh
 
