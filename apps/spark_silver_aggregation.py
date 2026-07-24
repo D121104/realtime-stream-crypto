@@ -31,10 +31,13 @@ spark.sparkContext.setLogLevel("WARN")
 
 bronze_stream = spark.readStream.format("delta").load(BRONZE_PATH)
 
-# Historical Bronze rows used event_timestamp. Normalize them at read time so the
-# Silver stream remains compatible while Bronze writes both schemas.
+# Historical Bronze rows store event_timestamp as epoch milliseconds. Normalize
+# that legacy BIGINT to a timestamp so watermarking works with both schemas.
 if "event_time" not in bronze_stream.columns:
-    bronze_stream = bronze_stream.withColumn("event_time", F.col("event_timestamp"))
+    bronze_stream = bronze_stream.withColumn(
+        "event_time",
+        (F.col("event_timestamp") / F.lit(1000)).cast("timestamp"),
+    )
 
 aggregated_trades = (
     bronze_stream.filter(
