@@ -85,6 +85,16 @@ Grafana tự provision datasource, dashboard **Crypto Realtime Overview** và al
 - Alert vận hành: [`grafana/provisioning/alerting/crypto-pipeline-freshness.yml`](grafana/provisioning/alerting/crypto-pipeline-freshness.yml) kích hoạt khi Gold không có cửa sổ mới hơn năm phút; thực hiện triage/recovery theo [`docs/p0-data-recovery-runbook.md`](docs/p0-data-recovery-runbook.md).
 - Dashboard có thêm panel độ trễ Gold và tỷ lệ aggregate Gold không hợp lệ trong một giờ, phục vụ theo dõi freshness và chất lượng dữ liệu.
 
+## Kiểm thử tự động
+
+Chạy các unit test không cần Kafka, Spark hoặc Docker:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Bộ test hiện kiểm tra contract định danh aggregate trade của Binance: tính tất định qua reconnect/replay, chuẩn hóa symbol và validation input tại [`tests/test_event_contract.py`](tests/test_event_contract.py). Kiểm thử tích hợp hạ tầng và bắt buộc chạy test trong CI sẽ được bổ sung ở các giai đoạn production-hardening tiếp theo.
+
 ## Xác minh nhanh
 
 ```bash

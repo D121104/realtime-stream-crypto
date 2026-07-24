@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import time
+from event_contract import source_event_id
 import websocket
 from dotenv import load_dotenv
 from kafka import KafkaProducer
@@ -51,7 +52,7 @@ def on_message(_ws, message):
         # replays.  A deterministic source key makes every downstream merge idempotent.
         event = {
             "metadata": {
-                "event_id": f"binance:aggTrade:{symbol.lower()}:{aggregate_trade_id}",
+                "event_id": source_event_id(symbol, aggregate_trade_id),
                 "event_timestamp": payload.get("E"),
                 "event_type": stream_name.split("@", maxsplit=1)[-1],
                 "source": "binance_websocket",
