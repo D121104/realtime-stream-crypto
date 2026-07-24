@@ -23,7 +23,7 @@ jobs:
       - name: Run unit tests and compile checks
         run: |
           python -m unittest discover -s tests -v
-          python -m py_compile apps/event_contract.py apps/producer.py apps/spark_streaming.py apps/spark_silver_aggregation.py apps/spark_gold_analytics.py
+          python -m py_compile apps/event_contract.py apps/market_symbols.py apps/backfill_binance_klines.py apps/producer.py apps/spark_streaming.py apps/spark_silver_aggregation.py apps/spark_gold_analytics.py
       - name: Validate Grafana dashboard JSON
         run: |
           python -c "import json; from pathlib import Path; json.loads(Path('grafana/provisioning/dashboards/crypto-realtime-overview.json').read_text(encoding='utf-8'))"

@@ -5,6 +5,7 @@ import logging
 import os
 import time
 from event_contract import source_event_id
+from market_symbols import configured_symbols
 import websocket
 from dotenv import load_dotenv
 from kafka import KafkaProducer
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "crypto-raw-data")
 KAFKA_HOST = os.getenv("KAFKA_HOST", "localhost")
-SYMBOLS = [symbol.strip().lower() for symbol in os.getenv("CRYPTO_SYMBOLS", "btcusdt,ethusdt").split(",") if symbol.strip()]
+SYMBOLS = configured_symbols(os.getenv("CRYPTO_SYMBOLS"))
 RECONNECT_INITIAL_SECONDS = float(os.getenv("WS_RECONNECT_INITIAL_SECONDS", "1"))
 RECONNECT_MAX_SECONDS = float(os.getenv("WS_RECONNECT_MAX_SECONDS", "30"))
 SOCKET_URL = "wss://stream.binance.com:9443/stream?streams=" + "/".join(f"{symbol}@aggTrade" for symbol in SYMBOLS)

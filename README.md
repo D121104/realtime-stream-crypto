@@ -33,8 +33,14 @@ KAFKA_HOST=localhost
 KAFKA_INTERNAL_HOST=kafka:29092
 SPARK_MASTER_URL=spark://spark-master:7077
 
-# Tùy chọn MVP
-CRYPTO_SYMBOLS=btcusdt,ethusdt
+# MVP Spot Binance: 10 cặp USDT thanh khoản cao
+CRYPTO_SYMBOLS=btcusdt,ethusdt,solusdt,bnbusdt,xrpusdt,dogeusdt,adausdt,trxusdt,avaxusdt,linkusdt
+
+# Backfill Kline một phút đã đóng; chạy thủ công, không cần Binance API key
+KLINE_BACKFILL_DAYS=365
+KLINE_REQUEST_DELAY_SECONDS=0.15
+KLINE_MAX_RETRIES=5
+
 ALERT_PRICE_CHANGE_PCT=1.0
 SILVER_WATERMARK=5 minutes
 ```
@@ -77,6 +83,18 @@ Chạy ba Spark job theo thứ tự. Các script PowerShell đã ghim package c�
 
 Mỗi script chạy blocking; hãy mở terminal riêng cho từng job. CI/CD tại [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) tự khởi động các job theo cùng thứ tự.
 
+## Backfill Kline lịch sử cho MVP dự báo
+
+Job [`apps/backfill_binance_klines.py`](apps/backfill_binance_klines.py) lấy nến Spot Binance `1m` qua REST, chỉ ghi nến đã đóng vào Bronze Delta riêng tại `s3a://crypto-lake/bronze_delta/binance_klines_1m`. Job không dùng API key, retry theo exponential backoff, giới hạn một request tối đa 1.000 nến và merge idempotent theo `(symbol, open_time_ms)`; có thể chạy lại an toàn để tiếp tục/reconcile dữ liệu.
+
+Sau khi nạp biến từ `.env`, chạy backfill 12 tháng bằng PowerShell:
+
+```powershell
+./scripts/run_kline_backfill.ps1 -Days 365
+```
+
+Không đưa job này vào deploy tự động. Việc tải lịch sử phải được chủ động thực hiện, theo dõi log và kiểm tra coverage trước khi dùng cho training. Kline historical được tách khỏi Bronze aggregate-trade hiện tại để không thay đổi checkpoint/schema của pipeline realtime; lớp feature ở giai đoạn sau sẽ chuẩn hóa hai nguồn dữ liệu.
+
 ## Contract dữ liệu và chất lượng
 
 - **Bronze** [`apps/spark_streaming.py`](apps/spark_streaming.py): parse JSON, ép `price`/`quantity` sang `double`, bắt buộc `event_id`, `symbol`, event time và giá/khối lượng dương. Bản ghi lỗi được ghi Delta tại `s3a://crypto-lake/quarantine/crypto_trades`.
@@ -101,7 +119,7 @@ Chạy các unit test không cần Kafka, Spark hoặc Docker:
 python -m unittest discover -s tests -v
 ```
 
-Bộ test hiện kiểm tra contract định danh aggregate trade của Binance: tính tất định qua reconnect/replay, chuẩn hóa symbol và validation input tại [`tests/test_event_contract.py`](tests/test_event_contract.py). Kiểm thử tích hợp hạ tầng và bắt buộc chạy test trong CI sẽ được bổ sung ở các giai đoạn production-hardening tiếp theo.
+Bộ test kiểm tra contract định danh aggregate trade của Binance tại [`tests/test_event_contract.py`](tests/test_event_contract.py), cùng universe 10 symbol, phân trang Kline, retry contract và việc loại nến đang mở tại [`tests/test_market_data_contract.py`](tests/test_market_data_contract.py). Kiểm thử tích hợp hạ tầng và bắt buộc chạy test trong CI sẽ được bổ sung ở các giai đoạn production-hardening tiếp theo.
 
 ## Xác minh nhanh
 
