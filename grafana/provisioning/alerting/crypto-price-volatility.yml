@@ -1,0 +1,50 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: crypto-streaming-alerts
+    folder: Crypto Streaming
+    interval: 1m
+    rules:
+      - uid: crypto-price-volatility
+        title: Crypto price volatility exceeds 1%
+        condition: B
+        data:
+          - refId: A
+            queryType: ""
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: ClickHouse
+            model:
+              database: default
+              format: 1
+              query: "SELECT toUnixTimestamp(now()) * 1000 AS time, max(abs(price_change_pct)) AS value FROM gold_crypto_analytics_v2 FINAL WHERE window_start >= now() - INTERVAL 5 MINUTE"
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              refId: B
+              expression: A
+              conditions:
+                - type: query
+                  evaluator:
+                    type: gt
+                    params: [1]
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    type: last
+                    params: []
+        noDataState: NoData
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: "Biến động crypto vượt quá 1% trong năm phút gần nhất"
+          runbook_url: "https://github.com/your-org/realtime-stream-crypto#alerts"
+        labels:
+          service: crypto-streaming
+          severity: warning

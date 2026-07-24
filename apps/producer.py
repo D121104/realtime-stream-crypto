@@ -1,69 +1,97 @@
-import uuid
+"""Resilient Binance aggregate-trade producer for Kafka."""
+
 import json
-import websocket
-from kafka import KafkaProducer
+import logging
 import os
+import time
+import uuid
+
+import websocket
 from dotenv import load_dotenv
+from kafka import KafkaProducer
 
 load_dotenv()
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
 
-kafka_host = os.getenv("KAFKA_HOST", "localhost")
+KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "crypto-raw-data")
+KAFKA_HOST = os.getenv("KAFKA_HOST", "localhost")
+SYMBOLS = [symbol.strip().lower() for symbol in os.getenv("CRYPTO_SYMBOLS", "btcusdt,ethusdt").split(",") if symbol.strip()]
+RECONNECT_INITIAL_SECONDS = float(os.getenv("WS_RECONNECT_INITIAL_SECONDS", "1"))
+RECONNECT_MAX_SECONDS = float(os.getenv("WS_RECONNECT_MAX_SECONDS", "30"))
+SOCKET_URL = "wss://stream.binance.com:9443/stream?streams=" + "/".join(f"{symbol}@aggTrade" for symbol in SYMBOLS)
 
 producer = KafkaProducer(
-    bootstrap_servers=[f'{kafka_host}:9092'],
-    value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-    key_serializer=lambda k: k.encode('utf-8')
+    bootstrap_servers=[f"{KAFKA_HOST}:9092"],
+    value_serializer=lambda value: json.dumps(value).encode("utf-8"),
+    key_serializer=lambda key: key.encode("utf-8"),
+    acks="all",
+    retries=5,
 )
 
-TOPIC_NAME = 'crypto-raw-data'
-SOCKET_URL = "wss://stream.binance.com:9443/stream?streams=btcusdt@aggTrade/ethusdt@aggTrade"
 
-def on_open(ws):
-    print("connection established")
-
-def on_message(ws, message):
-    data_json = json.loads(message)
-    
-    stream_name = data_json.get('stream')
-    
-    payload = data_json.get('data')
-    
-    kafka_key = payload['s']
-
-    metadata = {
-        'event_id': str(uuid.uuid4()),
-        'event_timestamp': payload['E'],
-        'event_type': stream_name.split('@')[1],
-        'source': 'binance_websocket',
-        'schema_version': '1.0'
-    }
-
-    kafka_value = {
-        'metadata': metadata,
-        'payload': payload
-    }
+def on_open(_ws):
+    logger.info("Connected to Binance streams: %s", ", ".join(SYMBOLS))
 
 
-
+def on_message(_ws, message):
     try:
-        producer.send(
-            topic = TOPIC_NAME,
-            key=kafka_key,
-            value=kafka_value,
-        )
+        envelope = json.loads(message)
+        stream_name = envelope.get("stream", "")
+        payload = envelope.get("data") or {}
+        symbol = payload.get("s")
+        if not stream_name or not symbol:
+            logger.warning("Ignoring malformed Binance event: %s", message[:300])
+            return
 
-        producer.flush()
+        event = {
+            "metadata": {
+                "event_id": str(uuid.uuid4()),
+                "event_timestamp": payload.get("E"),
+                "event_type": stream_name.split("@", maxsplit=1)[-1],
+                "source": "binance_websocket",
+                "schema_version": "1.0",
+            },
+            "payload": payload,
+        }
+        producer.send(KAFKA_TOPIC, key=symbol, value=event).get(timeout=10)
+        logger.info("Published event_id=%s symbol=%s", event["metadata"]["event_id"], symbol)
+    except (json.JSONDecodeError, KeyError, ValueError) as error:
+        logger.warning("Ignoring invalid Binance payload: %s", error)
+    except Exception:
+        logger.exception("Could not publish Binance event to Kafka")
 
-        print(f" Pushed Structure Data | ID: {metadata['event_id']} | Key: {kafka_key}")
-    except Exception as e:
-        print(f"Error sending message to Kafka: {str(e)}")
 
-def on_error(ws, error):
-    print(error)
+def on_error(_ws, error):
+    logger.error("Binance WebSocket error: %s", error)
 
-def on_close(ws, close_status_code, close_msg):
-    print("connection closed")
+
+def on_close(_ws, close_status_code, close_msg):
+    logger.warning("Binance connection closed: code=%s message=%s", close_status_code, close_msg)
+
+
+def run_forever():
+    delay = RECONNECT_INITIAL_SECONDS
+    while True:
+        try:
+            ws = websocket.WebSocketApp(
+                SOCKET_URL,
+                on_open=on_open,
+                on_message=on_message,
+                on_error=on_error,
+                on_close=on_close,
+            )
+            ws.run_forever(ping_interval=20, ping_timeout=10)
+        except Exception:
+            logger.exception("Unexpected WebSocket failure")
+        logger.info("Reconnecting to Binance in %.1f seconds", delay)
+        time.sleep(delay)
+        delay = min(delay * 2, RECONNECT_MAX_SECONDS)
+
 
 if __name__ == "__main__":
-    ws = websocket.WebSocketApp(SOCKET_URL, on_open=on_open, on_message=on_message, on_error=on_error, on_close=on_close)
-    ws.run_forever()
+    try:
+        run_forever()
+    finally:
+        producer.flush()
+        producer.close()

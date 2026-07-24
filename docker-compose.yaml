@@ -67,6 +67,9 @@ services:
     environment:
       - MINIO_USER=${MINIO_USER}
       - MINIO_PASS=${MINIO_PASS}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER}
+      - CLICKHOUSE_PASS=${CLICKHOUSE_PASS}
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     volumes:
       - ./apps:/opt/spark/apps

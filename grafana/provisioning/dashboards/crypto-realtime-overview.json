@@ -1,0 +1,70 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": true,
+  "panels": [
+    {
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "ClickHouse"},
+      "fieldConfig": {"defaults": {"unit": "currencyUSD"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [{"database": "default", "format": 1, "query": "SELECT window_start AS time, symbol, vwap AS price\nFROM gold_crypto_analytics_v2 FINAL\nWHERE $timeFilter AND symbol IN (${symbol:singlequote})\nORDER BY time", "refId": "A"}],
+      "title": "VWAP theo phút",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "ClickHouse"},
+      "fieldConfig": {"defaults": {"unit": "percent", "decimals": 3}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "id": 2,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [{"database": "default", "format": 1, "query": "SELECT window_start AS time, symbol, price_change_pct\nFROM gold_crypto_analytics_v2 FINAL\nWHERE $timeFilter AND symbol IN (${symbol:singlequote})\nORDER BY time", "refId": "A"}],
+      "title": "Biến động VWAP (%)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "ClickHouse"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "id": 3,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [{"database": "default", "format": 1, "query": "SELECT window_start AS time, symbol, total_volume\nFROM gold_crypto_analytics_v2 FINAL\nWHERE $timeFilter AND symbol IN (${symbol:singlequote})\nORDER BY time", "refId": "A"}],
+      "title": "Khối lượng giao dịch",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "ClickHouse"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "id": 4,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [{"database": "default", "format": 1, "query": "SELECT window_start AS time, symbol, trade_count\nFROM gold_crypto_analytics_v2 FINAL\nWHERE $timeFilter AND symbol IN (${symbol:singlequote})\nORDER BY time", "refId": "A"}],
+      "title": "Số giao dịch",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "ClickHouse"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 16},
+      "id": 5,
+      "options": {"showHeader": true, "sortBy": [{"desc": true, "displayName": "window_start"}]},
+      "targets": [{"database": "default", "format": 1, "query": "SELECT window_start, symbol, direction, severity, round(price_change_pct, 3) AS price_change_pct, round(observed_price, 4) AS observed_price, threshold_pct\nFROM crypto_price_alerts FINAL\nWHERE $timeFilter AND symbol IN (${symbol:singlequote})\nORDER BY window_start DESC\nLIMIT 100", "refId": "A"}],
+      "title": "Cảnh báo biến động giá",
+      "type": "table"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["crypto", "streaming", "mvp"],
+  "templating": {"list": [{"current": {"selected": true, "text": ["BTCUSDT", "ETHUSDT"], "value": ["BTCUSDT", "ETHUSDT"]}, "datasource": {"type": "grafana-clickhouse-datasource", "uid": "ClickHouse"}, "includeAll": true, "multi": true, "name": "symbol", "options": [], "query": "SELECT DISTINCT symbol FROM gold_crypto_analytics_v2 ORDER BY symbol", "refresh": 1, "type": "query"}]},
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "browser",
+  "title": "Crypto Realtime Overview",
+  "uid": "crypto-realtime-overview",
+  "version": 1
+}
