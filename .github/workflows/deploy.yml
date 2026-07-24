@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  security-events: write
 
 jobs:
   test:
@@ -23,10 +24,10 @@ jobs:
       - name: Run unit tests and compile checks
         run: |
           python -m unittest discover -s tests -v
-          python -m py_compile apps/event_contract.py apps/market_symbols.py apps/backfill_binance_klines.py apps/feature_contract.py apps/build_market_features.py apps/backtest_contract.py apps/train_baseline_models.py apps/model_registry.py apps/signal_contract.py apps/serve_predictions.py apps/producer.py apps/spark_streaming.py apps/spark_silver_aggregation.py apps/spark_gold_analytics.py
+          python -m py_compile apps/event_contract.py apps/market_symbols.py apps/backfill_binance_klines.py apps/feature_contract.py apps/build_market_features.py apps/backtest_contract.py apps/train_baseline_models.py apps/model_registry.py apps/signal_contract.py apps/serve_predictions.py apps/publish_prediction_signals.py apps/producer.py apps/spark_streaming.py apps/spark_silver_aggregation.py apps/spark_gold_analytics.py
       - name: Validate Grafana dashboard JSON
         run: |
-          python -c "import json; from pathlib import Path; json.loads(Path('grafana/provisioning/dashboards/crypto-realtime-overview.json').read_text(encoding='utf-8'))"
+          python -c "import json; from pathlib import Path; [json.loads(path.read_text(encoding='utf-8')) for path in Path('grafana/provisioning/dashboards').glob('*.json')]"
       - name: Validate Docker Compose rendering
         env:
           MINIO_USER: validation-user
@@ -38,8 +39,21 @@ jobs:
           HOST_BIND_ADDRESS: 127.0.0.1
         run: docker compose config --quiet
 
+  secret-scan:
+    name: Scan committed secrets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out full history for secret scanning
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan repository with Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   deploy:
-    needs: test
+    needs: [test, secret-scan]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     
