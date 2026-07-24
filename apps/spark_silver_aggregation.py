@@ -4,6 +4,7 @@ import os
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.streaming import StreamingQueryListener
 
 BRONZE_PATH = "s3a://crypto-lake/bronze_delta/crypto_trades"
 SILVER_PATH = "s3a://crypto-lake/silver_delta/crypto_trades_aggregated"
@@ -29,6 +30,31 @@ spark = (
 )
 spark.sparkContext.setLogLevel("WARN")
 
+class SilverProgressListener(StreamingQueryListener):
+    """Log input and watermark progress without materializing streaming rows."""
+
+    def onQueryStarted(self, event):
+        print(f"Silver query started: id={event.id}, run_id={event.runId}")
+
+    def onQueryProgress(self, event):
+        progress = event.progress
+        print(
+            "Silver batch progress: "
+            f"batch_id={progress.batchId}, input_rows={progress.numInputRows}, "
+            f"watermark={progress.eventTime.get('watermark', 'n/a')}, "
+            f"input_rows_per_second={progress.inputRowsPerSecond:.2f}, "
+            f"processed_rows_per_second={progress.processedRowsPerSecond:.2f}"
+        )
+
+    def onQueryTerminated(self, event):
+        print(f"Silver query terminated: id={event.id}, exception={event.exception}")
+
+    def onQueryIdle(self, event):
+        pass
+
+
+spark.streams.addListener(SilverProgressListener())
+
 # A reset Silver checkpoint must not replay historical Bronze aggregates.
 bronze_stream = (
     spark.readStream.format("delta")
@@ -36,12 +62,17 @@ bronze_stream = (
     .load(BRONZE_PATH)
 )
 
-# Historical Bronze rows store event_timestamp as epoch milliseconds. Normalize
-# that legacy BIGINT to a timestamp so watermarking works with both schemas.
+# Historical Bronze data has used both epoch seconds and epoch milliseconds.
+# Normalize based on magnitude; dividing seconds by 1000 would turn 2026 data
+# into 1970 and make the watermark discard every incoming trade.
 if "event_time" not in bronze_stream.columns:
+    event_timestamp = F.col("event_timestamp").cast("long")
     bronze_stream = bronze_stream.withColumn(
         "event_time",
-        (F.col("event_timestamp") / F.lit(1000)).cast("timestamp"),
+        F.when(
+            event_timestamp >= F.lit(100_000_000_000),
+            (event_timestamp / F.lit(1000)).cast("timestamp"),
+        ).otherwise(event_timestamp.cast("timestamp")),
     )
 
 aggregated_trades = (
