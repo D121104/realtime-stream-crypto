@@ -95,6 +95,20 @@ Sau khi nạp biến từ `.env`, chạy backfill 12 tháng bằng PowerShell:
 
 Không đưa job này vào deploy tự động. Việc tải lịch sử phải được chủ động thực hiện, theo dõi log và kiểm tra coverage trước khi dùng cho training. Kline historical được tách khỏi Bronze aggregate-trade hiện tại để không thay đổi checkpoint/schema của pipeline realtime; lớp feature ở giai đoạn sau sẽ chuẩn hóa hai nguồn dữ liệu.
 
+## Feature store và nhãn dự báo
+
+Job [`apps/build_market_features.py`](apps/build_market_features.py) đọc Bronze Kline và ghi Delta feature dataset versioned tại `s3a://crypto-lake/features_delta/market_features_v1`. Nó tạo return/momentum, volatility, VWAP deviation, volume/trade-count z-score, range và minute-of-day theo từng symbol. Feature rolling chỉ dùng nến hiện tại và quá khứ; label `15m`/`60m` dùng `lead` chỉ để lấy close đúng horizon ở tương lai. Nếu thiếu Kline tại horizon hoặc nến tương lai chưa tồn tại, label là `NULL`, không được dùng training.
+
+`LABEL_EDGE_THRESHOLD_PCT=0.40` là edge tối thiểu để phân lớp `UP`/`DOWN`; phần còn lại là `NEUTRAL`, phù hợp giả định chi phí round-trip bảo thủ `0,40%`. Trước training, luôn đặt `FEATURE_TRAIN_END_DATE` và `FEATURE_VALIDATION_END_DATE` theo thứ tự thời gian để output có `split_id` là `train`, `validation`, `holdout`; job từ chối split ngược thứ tự.
+
+Sau khi đã backfill và nạp biến `.env`, build feature dataset bằng:
+
+```powershell
+./scripts/run_feature_build.ps1
+```
+
+Không train với `split_id=unassigned`, không random split time-series, và không thay đổi `FEATURE_VERSION`/feature schema trong cùng một model run.
+
 ## Contract dữ liệu và chất lượng
 
 - **Bronze** [`apps/spark_streaming.py`](apps/spark_streaming.py): parse JSON, ép `price`/`quantity` sang `double`, bắt buộc `event_id`, `symbol`, event time và giá/khối lượng dương. Bản ghi lỗi được ghi Delta tại `s3a://crypto-lake/quarantine/crypto_trades`.
@@ -119,7 +133,7 @@ Chạy các unit test không cần Kafka, Spark hoặc Docker:
 python -m unittest discover -s tests -v
 ```
 
-Bộ test kiểm tra contract định danh aggregate trade của Binance tại [`tests/test_event_contract.py`](tests/test_event_contract.py), cùng universe 10 symbol, phân trang Kline, retry contract và việc loại nến đang mở tại [`tests/test_market_data_contract.py`](tests/test_market_data_contract.py). Kiểm thử tích hợp hạ tầng và bắt buộc chạy test trong CI sẽ được bổ sung ở các giai đoạn production-hardening tiếp theo.
+Bộ test kiểm tra contract định danh aggregate trade của Binance tại [`tests/test_event_contract.py`](tests/test_event_contract.py), cùng universe 10 symbol, phân trang Kline, retry contract và việc loại nến đang mở tại [`tests/test_market_data_contract.py`](tests/test_market_data_contract.py). Test tại [`tests/test_feature_contract.py`](tests/test_feature_contract.py) kiểm tra nhãn chỉ dùng future close, không phát nhãn ở tail chưa đủ horizon, ranh giới lớp và split thời gian. Kiểm thử tích hợp hạ tầng và bắt buộc chạy test trong CI sẽ được bổ sung ở các giai đoạn production-hardening tiếp theo.
 
 ## Xác minh nhanh
 
