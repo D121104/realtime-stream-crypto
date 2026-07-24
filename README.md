@@ -109,6 +109,18 @@ Sau khi đã backfill và nạp biến `.env`, build feature dataset bằng:
 
 Không train với `split_id=unassigned`, không random split time-series, và không thay đổi `FEATURE_VERSION`/feature schema trong cùng một model run.
 
+## Baseline training và backtest sau chi phí
+
+Job [`apps/train_baseline_models.py`](apps/train_baseline_models.py) huấn luyện logistic regression riêng cho horizon `15m` và `60m`. Pipeline chỉ fit trên `train`; validation và holdout được giữ tách biệt theo `split_id`. Nhãn `NEUTRAL` không được dùng cho baseline directional đầu tiên để mô hình chỉ so sánh `UP` với `DOWN` trên các mẫu đã vượt edge label.
+
+Backtest chỉ chọn prediction có confidence tối thiểu `MODEL_CONFIDENCE_THRESHOLD` (mặc định `0.55`). Mỗi trade đã chọn bị trừ `0,20%` khi vào và `0,20%` khi thoát, tức `0,40%` round-trip, cho cả chiều `UP` lẫn `DOWN`. Báo cáo holdout được ghi riêng theo horizon dưới `s3a://crypto-lake/model_reports/logistic_regression/v1/`; model chỉ là **candidate** và chưa được publish thành tín hiệu người dùng.
+
+```powershell
+./scripts/run_baseline_training.ps1
+```
+
+Chỉ chuyển candidate sang giai đoạn serving sau khi kiểm tra kết quả holdout theo từng mã/horizon, net return sau phí, win rate, trade coverage và drawdown. Không diễn giải accuracy hoặc kết quả backtest là cam kết lợi nhuận.
+
 ## Contract dữ liệu và chất lượng
 
 - **Bronze** [`apps/spark_streaming.py`](apps/spark_streaming.py): parse JSON, ép `price`/`quantity` sang `double`, bắt buộc `event_id`, `symbol`, event time và giá/khối lượng dương. Bản ghi lỗi được ghi Delta tại `s3a://crypto-lake/quarantine/crypto_trades`.
@@ -133,7 +145,7 @@ Chạy các unit test không cần Kafka, Spark hoặc Docker:
 python -m unittest discover -s tests -v
 ```
 
-Bộ test kiểm tra contract định danh aggregate trade của Binance tại [`tests/test_event_contract.py`](tests/test_event_contract.py), cùng universe 10 symbol, phân trang Kline, retry contract và việc loại nến đang mở tại [`tests/test_market_data_contract.py`](tests/test_market_data_contract.py). Test tại [`tests/test_feature_contract.py`](tests/test_feature_contract.py) kiểm tra nhãn chỉ dùng future close, không phát nhãn ở tail chưa đủ horizon, ranh giới lớp và split thời gian. Kiểm thử tích hợp hạ tầng và bắt buộc chạy test trong CI sẽ được bổ sung ở các giai đoạn production-hardening tiếp theo.
+Bộ test kiểm tra contract định danh aggregate trade của Binance tại [`tests/test_event_contract.py`](tests/test_event_contract.py), cùng universe 10 symbol, phân trang Kline, retry contract và việc loại nến đang mở tại [`tests/test_market_data_contract.py`](tests/test_market_data_contract.py). Test tại [`tests/test_feature_contract.py`](tests/test_feature_contract.py) kiểm tra nhãn chỉ dùng future close, không phát nhãn ở tail chưa đủ horizon, ranh giới lớp và split thời gian. Test tại [`tests/test_backtest_contract.py`](tests/test_backtest_contract.py) kiểm tra chi phí vào/ra hai chiều, `NO_TRADE`, ngưỡng edge và drawdown. Kiểm thử tích hợp hạ tầng và bắt buộc chạy test trong CI sẽ được bổ sung ở các giai đoạn production-hardening tiếp theo.
 
 ## Xác minh nhanh
 
