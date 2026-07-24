@@ -39,6 +39,8 @@ ALERT_PRICE_CHANGE_PCT=1.0
 SILVER_WATERMARK=5 minutes
 ```
 
+Sao chép [`.env.example`](.env.example) thành `.env` và thay toàn bộ placeholder bằng secret từ secret manager của môi trường. Không commit `.env`. Mặc định các cổng hạ tầng chỉ bind `127.0.0.1`; chỉ đặt `HOST_BIND_ADDRESS=0.0.0.0` sau khi có firewall/reverse proxy, TLS và authentication phù hợp.
+
 Khởi tạo hạ tầng và schema ClickHouse:
 
 ```bash
@@ -118,3 +120,9 @@ Không xóa checkpoint của pipeline đang chạy bình thường: checkpoint l
 ## Recovery và replay an toàn
 
 Producer phát `event_id` tất định từ Binance aggregate trade ID; Bronze merge theo khóa này để Kafka replay hoặc producer reconnect không tạo giao dịch logic trùng. Quy trình replay/backfill tách biệt checkpoint, output và bảng staging khỏi production, kèm checklist đối soát và promote, được mô tả tại [`docs/p0-data-recovery-runbook.md`](docs/p0-data-recovery-runbook.md).
+
+## Security và HA baseline
+
+- Dùng tài khoản ClickHouse dành riêng cho pipeline/Grafana, cấp quyền tối thiểu; Grafana lấy `CLICKHOUSE_USER` và password từ environment thay vì hard-code user mặc định.
+- Rotation secret, TLS/Kafka ACL, MinIO bucket policy, ClickHouse backup/restore drill, Kafka replication và object-store versioning là bắt buộc trước production multi-node. Compose hiện là baseline single-node/local, không phải cấu hình HA.
+- Giữ retention Delta đủ dài cho replay/audit; không chạy [`VACUUM`](apps/compact_delta_lake.py:40) khi checkpoint hoặc evidence recovery trong retention còn cần dùng.

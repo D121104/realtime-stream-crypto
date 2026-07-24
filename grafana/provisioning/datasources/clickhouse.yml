@@ -10,7 +10,7 @@ datasources:
       port: 8123
       protocol: http
       defaultDatabase: default
-      username: default
+      username: ${CLICKHOUSE_USER}
     secureJsonData:
       password: ${CLICKHOUSE_PASS}
     isDefault: true
