@@ -39,7 +39,7 @@ ALERT_PRICE_CHANGE_PCT=1.0
 SILVER_WATERMARK=5 minutes
 ```
 
-Sao chép [`.env.example`](.env.example) thành `.env` và thay toàn bộ placeholder bằng secret từ secret manager của môi trường. Không commit `.env`. Mặc định các cổng hạ tầng chỉ bind `127.0.0.1`; chỉ đặt `HOST_BIND_ADDRESS=0.0.0.0` sau khi có firewall/reverse proxy, TLS và authentication phù hợp.
+Sao chép [`.env.example`](.env.example) thành `.env` và thay toàn bộ placeholder bằng secret từ secret manager của môi trường. Không commit `.env`. Các cổng hạ tầng (Kafka, MinIO, Spark, ClickHouse) mặc định bind `127.0.0.1`. Để truy cập Grafana trực tiếp từ Internet, chỉ đặt `GRAFANA_BIND_ADDRESS=0.0.0.0`, rồi mở TCP `3000` ở Oracle Cloud NSG/Security List và firewall VPS; không đặt `HOST_BIND_ADDRESS=0.0.0.0`.
 
 Khởi tạo hạ tầng và schema ClickHouse:
 

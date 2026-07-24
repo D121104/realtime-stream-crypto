@@ -144,7 +144,7 @@ services:
     container_name: grafana
     user: "root"
     ports:
-      - "${HOST_BIND_ADDRESS:-127.0.0.1}:3000:3000"
+      - "${GRAFANA_BIND_ADDRESS:-127.0.0.1}:3000:3000"
     environment:
       - CLICKHOUSE_PASS=${CLICKHOUSE_PASS}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASS}
