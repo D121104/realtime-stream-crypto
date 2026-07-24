@@ -63,16 +63,19 @@ aggregated_trades = (
         (F.sum(F.col("price") * F.col("quantity")) / F.sum("quantity")).alias("vwap"),
         F.count("event_id").cast("long").alias("trade_count"),
     )
+    # The existing Silver Delta table stores numeric aggregates as STRING. Cast
+    # the new stream explicitly to that legacy schema instead of evolving the
+    # table while historical consumers are still reading it.
     .select(
         F.col("window.start").alias("window_start"),
         F.col("window.end").alias("window_end"),
         "symbol",
-        "avg_price",
-        "low_price",
-        "high_price",
-        "total_volume",
-        "vwap",
-        "trade_count",
+        F.col("avg_price").cast("string").alias("avg_price"),
+        F.col("low_price").cast("string").alias("low_price"),
+        F.col("high_price").cast("string").alias("high_price"),
+        F.col("total_volume").cast("string").alias("total_volume"),
+        F.col("vwap").cast("string").alias("vwap"),
+        F.col("trade_count").cast("string").alias("trade_count"),
         F.to_date("window.start").alias("event_date"),
     )
 )
