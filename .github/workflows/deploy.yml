@@ -3,9 +3,44 @@ name: Crypto Pipeline CI/CD
 on:
   push:
     branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+
+permissions:
+  contents: read
 
 jobs:
+  test:
+    name: Validate pipeline artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run unit tests and compile checks
+        run: |
+          python -m unittest discover -s tests -v
+          python -m py_compile apps/event_contract.py apps/producer.py apps/spark_streaming.py apps/spark_silver_aggregation.py apps/spark_gold_analytics.py
+      - name: Validate Grafana dashboard JSON
+        run: |
+          python -c "import json; from pathlib import Path; json.loads(Path('grafana/provisioning/dashboards/crypto-realtime-overview.json').read_text(encoding='utf-8'))"
+      - name: Validate Docker Compose rendering
+        env:
+          MINIO_USER: validation-user
+          MINIO_PASS: validation-password
+          MINIO_ENDPOINT: http://minio:9000
+          CLICKHOUSE_USER: crypto_pipeline
+          CLICKHOUSE_PASS: validation-password
+          GRAFANA_PASS: validation-password
+          HOST_BIND_ADDRESS: 127.0.0.1
+        run: docker compose config --quiet
+
   deploy:
+    needs: test
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     
     steps:
