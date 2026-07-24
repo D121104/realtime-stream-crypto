@@ -84,7 +84,8 @@ query = (
     .outputMode("append")
     .option("path", SILVER_PATH)
     .option("checkpointLocation", CHECKPOINT_PATH)
-    .partitionBy("event_date", "symbol")
+    # The existing Silver Delta table is partitioned only by event_date.
+    .partitionBy("event_date")
     .trigger(processingTime=os.environ.get("SILVER_TRIGGER", "60 seconds"))
     .start()
 )
