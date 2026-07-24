@@ -13,7 +13,7 @@
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
       "id": 1,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
-      "targets": [{"database": "default", "format": 1, "queryType": "sql", "rawSql": "SELECT window_start AS time, symbol, vwap AS price\nFROM gold_crypto_analytics_v2 FINAL\nWHERE $timeFilter AND symbol IN (${symbol:singlequote})\nORDER BY time", "refId": "A"}],
+      "targets": [{"database": "default", "format": 1, "queryType": "sql", "rawSql": "SELECT window_start AS time, symbol, vwap AS price\nFROM gold_crypto_analytics_v2 FINAL\nWHERE $__timeFilter(window_start) AND symbol IN (${symbol:singlequote})\nORDER BY time", "refId": "A"}],
       "title": "VWAP theo phút",
       "type": "timeseries"
     },
@@ -23,7 +23,7 @@
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
       "id": 2,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
-      "targets": [{"database": "default", "format": 1, "queryType": "sql", "rawSql": "SELECT window_start AS time, symbol, price_change_pct\nFROM gold_crypto_analytics_v2 FINAL\nWHERE $timeFilter AND symbol IN (${symbol:singlequote})\nORDER BY time", "refId": "A"}],
+      "targets": [{"database": "default", "format": 1, "queryType": "sql", "rawSql": "SELECT window_start AS time, symbol, price_change_pct\nFROM gold_crypto_analytics_v2 FINAL\nWHERE $__timeFilter(window_start) AND symbol IN (${symbol:singlequote})\nORDER BY time", "refId": "A"}],
       "title": "Biến động VWAP (%)",
       "type": "timeseries"
     },
@@ -33,7 +33,7 @@
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
       "id": 3,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
-      "targets": [{"database": "default", "format": 1, "queryType": "sql", "rawSql": "SELECT window_start AS time, symbol, total_volume\nFROM gold_crypto_analytics_v2 FINAL\nWHERE $timeFilter AND symbol IN (${symbol:singlequote})\nORDER BY time", "refId": "A"}],
+      "targets": [{"database": "default", "format": 1, "queryType": "sql", "rawSql": "SELECT window_start AS time, symbol, total_volume\nFROM gold_crypto_analytics_v2 FINAL\nWHERE $__timeFilter(window_start) AND symbol IN (${symbol:singlequote})\nORDER BY time", "refId": "A"}],
       "title": "Khối lượng giao dịch",
       "type": "timeseries"
     },
@@ -43,7 +43,7 @@
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
       "id": 4,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
-      "targets": [{"database": "default", "format": 1, "queryType": "sql", "rawSql": "SELECT window_start AS time, symbol, trade_count\nFROM gold_crypto_analytics_v2 FINAL\nWHERE $timeFilter AND symbol IN (${symbol:singlequote})\nORDER BY time", "refId": "A"}],
+      "targets": [{"database": "default", "format": 1, "queryType": "sql", "rawSql": "SELECT window_start AS time, symbol, trade_count\nFROM gold_crypto_analytics_v2 FINAL\nWHERE $__timeFilter(window_start) AND symbol IN (${symbol:singlequote})\nORDER BY time", "refId": "A"}],
       "title": "Số giao dịch",
       "type": "timeseries"
     },
@@ -53,7 +53,7 @@
       "gridPos": {"h": 9, "w": 24, "x": 0, "y": 16},
       "id": 5,
       "options": {"showHeader": true, "sortBy": [{"desc": true, "displayName": "window_start"}]},
-      "targets": [{"database": "default", "format": 1, "queryType": "sql", "rawSql": "SELECT window_start, symbol, direction, severity, round(price_change_pct, 3) AS price_change_pct, round(observed_price, 4) AS observed_price, threshold_pct\nFROM crypto_price_alerts FINAL\nWHERE $timeFilter AND symbol IN (${symbol:singlequote})\nORDER BY window_start DESC\nLIMIT 100", "refId": "A"}],
+      "targets": [{"database": "default", "format": 1, "queryType": "sql", "rawSql": "SELECT window_start, symbol, direction, severity, round(price_change_pct, 3) AS price_change_pct, round(observed_price, 4) AS observed_price, threshold_pct\nFROM crypto_price_alerts FINAL\nWHERE $__timeFilter(window_start) AND symbol IN (${symbol:singlequote})\nORDER BY window_start DESC\nLIMIT 100", "refId": "A"}],
       "title": "Cảnh báo biến động giá",
       "type": "table"
     }
@@ -66,5 +66,5 @@
   "timezone": "browser",
   "title": "Crypto Realtime Overview",
   "uid": "crypto-realtime-overview",
-  "version": 2
+  "version": 3
 }
