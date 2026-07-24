@@ -22,6 +22,7 @@ alert_threshold_pct = float(os.environ.get("ALERT_PRICE_CHANGE_PCT", "1.0"))
 spark = (
     SparkSession.builder.appName("Crypto-Gold-Analytics")
     .master(os.environ.get("SPARK_MASTER_URL", "spark://spark-master:7077"))
+    .config("spark.cores.max", "4")
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
     .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
     .config(

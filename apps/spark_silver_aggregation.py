@@ -29,7 +29,12 @@ spark = (
 )
 spark.sparkContext.setLogLevel("WARN")
 
-bronze_stream = spark.readStream.format("delta").load(BRONZE_PATH)
+# A reset Silver checkpoint must not replay historical Bronze aggregates.
+bronze_stream = (
+    spark.readStream.format("delta")
+    .option("startingVersion", "latest")
+    .load(BRONZE_PATH)
+)
 
 # Historical Bronze rows store event_timestamp as epoch milliseconds. Normalize
 # that legacy BIGINT to a timestamp so watermarking works with both schemas.
