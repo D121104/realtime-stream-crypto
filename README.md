@@ -1,1 +1,178 @@
-# realtime-stream-crypto
+# Realtime Stream Crypto
+
+Pipeline phân tích giao dịch crypto thời gian thực theo mô hình medallion, lấy dữ liệu `aggTrade` từ Binance và cung cấp dashboard/alert qua Grafana.
+
+```text
+Binance WebSocket → Python producer → Kafka → Bronze Delta (MinIO)
+                                      └→ Silver Delta (1-minute aggregates)
+                                           └→ Gold analytics + alerts (ClickHouse) → Grafana
+```
+
+## Thành phần
+
+| Thành phần | Vai trò | Cổng local |
+| --- | --- | --- |
+| Kafka / Kafka UI | Event bus / xem topic | `9092` / `8082` |
+| MinIO | Lakehouse object store | `9000` / `9001` |
+| Spark Master / Worker | Structured Streaming | `8080` / `8081` |
+| ClickHouse | Gold serving layer | `8123` |
+| Grafana | Dashboard và unified alerting | `3000` |
+
+## Chuẩn bị
+
+Tạo `.env` (không commit) với tối thiểu:
+
+```dotenv
+MINIO_USER=replace-me
+MINIO_PASS=replace-me
+MINIO_ENDPOINT=http://minio:9000
+CLICKHOUSE_USER=default
+CLICKHOUSE_PASS=replace-me
+GRAFANA_PASS=replace-me
+KAFKA_HOST=localhost
+KAFKA_INTERNAL_HOST=kafka:29092
+SPARK_MASTER_URL=spark://spark-master:7077
+
+# MVP Spot Binance: 10 cặp USDT thanh khoản cao
+CRYPTO_SYMBOLS=btcusdt,ethusdt,solusdt,bnbusdt,xrpusdt,dogeusdt,adausdt,trxusdt,avaxusdt,linkusdt
+
+# Backfill Kline một phút đã đóng; chạy thủ công, không cần Binance API key
+KLINE_BACKFILL_DAYS=365
+KLINE_REQUEST_DELAY_SECONDS=0.15
+KLINE_MAX_RETRIES=5
+
+ALERT_PRICE_CHANGE_PCT=1.0
+SILVER_WATERMARK=5 minutes
+```
+
+Sao chép [`.env.example`](.env.example) thành `.env` và thay toàn bộ placeholder bằng secret từ secret manager của môi trường. Không commit `.env`. Tất cả cổng hạ tầng, gồm Grafana, mặc định bind `127.0.0.1`; không mở TCP `3000` trong Oracle Cloud NSG/Security List hay firewall VPS. Truy cập Grafana riêng tư từ máy quản trị bằng SSH tunnel:
+
+```powershell
+ssh -L 3000:127.0.0.1:3000 ubuntu@<VPS_IP>
+```
+
+Sau đó mở `http://localhost:3000` trong trình duyệt. Thay `<VPS_IP>` bằng địa chỉ IP công khai của VPS.
+
+Khởi tạo hạ tầng và schema ClickHouse:
+
+```bash
+docker compose up -d
+docker exec -i clickhouse clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASS" < scripts/init_clickhouse.sql
+```
+
+> Nạp biến `.env` vào shell trước khi chạy câu lệnh schema, ví dụ: `set -a; source .env; set +a` trên Bash.
+
+## Chạy pipeline local
+
+Cài dependency producer rồi chạy producer trong terminal riêng:
+
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python apps/producer.py
+```
+
+Chạy ba Spark job theo thứ tự. Các script PowerShell đã ghim package cần thiết:
+
+```powershell
+./scripts/run_streaming.ps1
+./scripts/run_silver_aggregation.ps1
+./scripts/run_gold_analytics.ps1
+```
+
+Mỗi script chạy blocking; hãy mở terminal riêng cho từng job. CI/CD tại [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) tự khởi động các job theo cùng thứ tự.
+
+## Backfill Kline lịch sử cho MVP dự báo
+
+Job [`apps/backfill_binance_klines.py`](apps/backfill_binance_klines.py) lấy nến Spot Binance `1m` qua REST, chỉ ghi nến đã đóng vào Bronze Delta riêng tại `s3a://crypto-lake/bronze_delta/binance_klines_1m`. Job không dùng API key, retry theo exponential backoff, giới hạn một request tối đa 1.000 nến và merge idempotent theo `(symbol, open_time_ms)`; có thể chạy lại an toàn để tiếp tục/reconcile dữ liệu.
+
+Sau khi nạp biến từ `.env`, chạy backfill 12 tháng bằng PowerShell:
+
+```powershell
+./scripts/run_kline_backfill.ps1 -Days 365
+```
+
+Không đưa job này vào deploy tự động. Việc tải lịch sử phải được chủ động thực hiện, theo dõi log và kiểm tra coverage trước khi dùng cho training. Kline historical được tách khỏi Bronze aggregate-trade hiện tại để không thay đổi checkpoint/schema của pipeline realtime; lớp feature ở giai đoạn sau sẽ chuẩn hóa hai nguồn dữ liệu.
+
+## Feature store và nhãn dự báo
+
+Job [`apps/build_market_features.py`](apps/build_market_features.py) đọc Bronze Kline và ghi Delta feature dataset versioned tại `s3a://crypto-lake/features_delta/market_features_v1`. Nó tạo return/momentum, volatility, VWAP deviation, volume/trade-count z-score, range và minute-of-day theo từng symbol. Feature rolling chỉ dùng nến hiện tại và quá khứ; label `15m`/`60m` dùng `lead` chỉ để lấy close đúng horizon ở tương lai. Nếu thiếu Kline tại horizon hoặc nến tương lai chưa tồn tại, label là `NULL`, không được dùng training.
+
+`LABEL_EDGE_THRESHOLD_PCT=0.40` là edge tối thiểu để phân lớp `UP`/`DOWN`; phần còn lại là `NEUTRAL`, phù hợp giả định chi phí round-trip bảo thủ `0,40%`. Trước training, luôn đặt `FEATURE_TRAIN_END_DATE` và `FEATURE_VALIDATION_END_DATE` theo thứ tự thời gian để output có `split_id` là `train`, `validation`, `holdout`; job từ chối split ngược thứ tự.
+
+Sau khi đã backfill và nạp biến `.env`, build feature dataset bằng:
+
+```powershell
+./scripts/run_feature_build.ps1
+```
+
+Không train với `split_id=unassigned`, không random split time-series, và không thay đổi `FEATURE_VERSION`/feature schema trong cùng một model run.
+
+## Baseline training và backtest sau chi phí
+
+Job [`apps/train_baseline_models.py`](apps/train_baseline_models.py) huấn luyện logistic regression riêng cho horizon `15m` và `60m`. Pipeline chỉ fit trên `train`; validation và holdout được giữ tách biệt theo `split_id`. Nhãn `NEUTRAL` không được dùng cho baseline directional đầu tiên để mô hình chỉ so sánh `UP` với `DOWN` trên các mẫu đã vượt edge label.
+
+Backtest chỉ chọn prediction có confidence tối thiểu `MODEL_CONFIDENCE_THRESHOLD` (mặc định `0.55`). Mỗi trade đã chọn bị trừ `0,20%` khi vào và `0,20%` khi thoát, tức `0,40%` round-trip, cho cả chiều `UP` lẫn `DOWN`. Báo cáo holdout được ghi riêng theo horizon dưới `s3a://crypto-lake/model_reports/logistic_regression/v1/`; model chỉ là **candidate** và chưa được publish thành tín hiệu người dùng.
+
+```powershell
+./scripts/run_baseline_training.ps1
+```
+
+Chỉ chuyển candidate sang giai đoạn serving sau khi kiểm tra kết quả holdout theo từng mã/horizon, net return sau phí, win rate, trade coverage và drawdown. Không diễn giải accuracy hoặc kết quả backtest là cam kết lợi nhuận.
+
+## Contract dữ liệu và chất lượng
+
+- **Bronze** [`apps/spark_streaming.py`](apps/spark_streaming.py): parse JSON, ép `price`/`quantity` sang `double`, bắt buộc `event_id`, `symbol`, event time và giá/khối lượng dương. Bản ghi lỗi được ghi Delta tại `s3a://crypto-lake/quarantine/crypto_trades`.
+- **Silver** [`apps/spark_silver_aggregation.py`](apps/spark_silver_aggregation.py): đọc Bronze Delta, watermark event-time mặc định 5 phút, loại event ID trùng trong trạng thái stream, phát aggregate VWAP theo một phút sau khi cửa sổ đóng.
+- **Gold** [`apps/spark_gold_analytics.py`](apps/spark_gold_analytics.py): đọc Silver Delta, tính phần trăm chênh lệch VWAP từ cửa sổ trước của từng symbol, và ghi bảng ClickHouse dạng `ReplacingMergeTree`.
+
+## Dashboard và cảnh báo
+
+Grafana tự provision datasource, dashboard **Crypto Realtime Overview** và alert rule sau khi container restart.
+
+- Dashboard: `http://localhost:3000`, folder **Crypto Streaming**.
+- Panel: VWAP, biến động phần trăm, volume, trade count và bảng lịch sử alert.
+- Alert rule: kích hoạt nếu biến động tuyệt đối lớn nhất trong năm phút gần nhất lớn hơn **1%**. Điều chỉnh ngưỡng phát event alert trong Gold bằng `ALERT_PRICE_CHANGE_PCT`; nếu thay đổi ngưỡng này, cập nhật tương ứng rule tại [`grafana/provisioning/alerting/crypto-price-volatility.yml`](grafana/provisioning/alerting/crypto-price-volatility.yml).
+- Alert vận hành: [`grafana/provisioning/alerting/crypto-pipeline-freshness.yml`](grafana/provisioning/alerting/crypto-pipeline-freshness.yml) kích hoạt khi Gold không có cửa sổ mới hơn năm phút; thực hiện triage/recovery theo [`docs/p0-data-recovery-runbook.md`](docs/p0-data-recovery-runbook.md).
+- Dashboard có thêm panel độ trễ Gold và tỷ lệ aggregate Gold không hợp lệ trong một giờ, phục vụ theo dõi freshness và chất lượng dữ liệu.
+
+## Kiểm thử tự động
+
+Chạy các unit test không cần Kafka, Spark hoặc Docker:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Bộ test kiểm tra contract định danh aggregate trade của Binance tại [`tests/test_event_contract.py`](tests/test_event_contract.py), cùng universe 10 symbol, phân trang Kline, retry contract và việc loại nến đang mở tại [`tests/test_market_data_contract.py`](tests/test_market_data_contract.py). Test tại [`tests/test_feature_contract.py`](tests/test_feature_contract.py) kiểm tra nhãn chỉ dùng future close, không phát nhãn ở tail chưa đủ horizon, ranh giới lớp và split thời gian. Test tại [`tests/test_backtest_contract.py`](tests/test_backtest_contract.py) kiểm tra chi phí vào/ra hai chiều, `NO_TRADE`, ngưỡng edge và drawdown. Kiểm thử tích hợp hạ tầng và bắt buộc chạy test trong CI sẽ được bổ sung ở các giai đoạn production-hardening tiếp theo.
+
+## Xác minh nhanh
+
+```bash
+docker exec clickhouse clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASS" --query "SELECT symbol, window_start, vwap, price_change_pct FROM default.gold_crypto_analytics_v2 FINAL ORDER BY window_start DESC LIMIT 20"
+
+docker exec clickhouse clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASS" --query "SELECT symbol, direction, price_change_pct, created_at FROM default.crypto_price_alerts FINAL ORDER BY created_at DESC LIMIT 20"
+```
+
+## Chuyển đổi từ pipeline cũ / reset state
+
+MVP dùng contract Delta Bronze → Silver → Gold mới. Khi chuyển từ phiên bản cũ hoặc thay đổi schema/checkpoint không tương thích:
+
+1. Dừng toàn bộ Spark jobs.
+2. Sao lưu dữ liệu/checkpoint MinIO nếu cần audit.
+3. Xóa checkpoint của tầng cần chạy lại dưới `s3a://crypto-lake/checkpoints/`.
+4. Nếu muốn reprocess đầy đủ, xóa output Delta phụ thuộc và truncate hai bảng Gold v2/alerts.
+5. Chạy lại Bronze, Silver, Gold theo thứ tự.
+
+Không xóa checkpoint của pipeline đang chạy bình thường: checkpoint là cơ chế khôi phục offset và xử lý lại an toàn.
+
+## Recovery và replay an toàn
+
+Producer phát `event_id` tất định từ Binance aggregate trade ID; Bronze merge theo khóa này để Kafka replay hoặc producer reconnect không tạo giao dịch logic trùng. Quy trình replay/backfill tách biệt checkpoint, output và bảng staging khỏi production, kèm checklist đối soát và promote, được mô tả tại [`docs/p0-data-recovery-runbook.md`](docs/p0-data-recovery-runbook.md).
+
+## Security và HA baseline
+
+- Dùng tài khoản ClickHouse dành riêng cho pipeline/Grafana, cấp quyền tối thiểu; Grafana lấy `CLICKHOUSE_USER` và password từ environment thay vì hard-code user mặc định.
+- Rotation secret, TLS/Kafka ACL, MinIO bucket policy, ClickHouse backup/restore drill, Kafka replication và object-store versioning là bắt buộc trước production multi-node. Compose hiện là baseline single-node/local, không phải cấu hình HA.
+- Giữ retention Delta đủ dài cho replay/audit; không chạy [`VACUUM`](apps/compact_delta_lake.py:40) khi checkpoint hoặc evidence recovery trong retention còn cần dùng.

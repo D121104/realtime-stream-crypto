@@ -1,0 +1,81 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "graphTooltip": 1,
+  "id": null,
+  "liveNow": true,
+  "panels": [
+    {
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "ClickHouse"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 8, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "value_and_name"},
+      "targets": [{"database": "default", "format": 1, "queryType": "sql", "rawSql": "SELECT countIf(action != 'NO_TRADE') AS active_directional_signals\nFROM crypto_prediction_signals FINAL\nWHERE served_at >= now() - INTERVAL 15 MINUTE", "refId": "A"}],
+      "title": "Tín hiệu hướng đang hoạt động (15 phút)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "ClickHouse"},
+      "fieldConfig": {"defaults": {"unit": "percent", "decimals": 2, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 20}, {"color": "red", "value": 50}]}}, "overrides": []},
+      "gridPos": {"h": 7, "w": 8, "x": 8, "y": 0},
+      "id": 2,
+      "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "value_and_name"},
+      "targets": [{"database": "default", "format": 1, "queryType": "sql", "rawSql": "SELECT 100.0 * countIf(action = 'NO_TRADE') / nullIf(count(), 0) AS no_trade_pct\nFROM crypto_prediction_signals FINAL\nWHERE served_at >= now() - INTERVAL 1 HOUR", "refId": "A"}],
+      "title": "Tỷ lệ NO_TRADE (1 giờ)",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "ClickHouse"},
+      "fieldConfig": {"defaults": {"unit": "s", "decimals": 0, "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "orange", "value": 180}, {"color": "red", "value": 300}]}}, "overrides": []},
+      "gridPos": {"h": 7, "w": 8, "x": 16, "y": 0},
+      "id": 3,
+      "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "value_and_name"},
+      "targets": [{"database": "default", "format": 1, "queryType": "sql", "rawSql": "SELECT coalesce(toUnixTimestamp(now()) - toUnixTimestamp(max(served_at)), 999999) AS prediction_freshness_seconds\nFROM crypto_prediction_signals FINAL", "refId": "A"}],
+      "title": "Độ trễ prediction", 
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "ClickHouse"},
+      "fieldConfig": {"defaults": {"unit": "percent", "decimals": 2}, "overrides": []},
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 7},
+      "id": 4,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [{"database": "default", "format": 1, "queryType": "sql", "rawSql": "SELECT served_at AS time, symbol, max(probability_up) AS probability_up\nFROM crypto_prediction_signals FINAL\nWHERE $__timeFilter(served_at) AND symbol IN (${symbol:singlequote}) AND horizon_minutes = ${horizon}\nGROUP BY time, symbol\nORDER BY time", "refId": "A"}],
+      "title": "Xác suất UP theo thời gian",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "ClickHouse"},
+      "fieldConfig": {"defaults": {}, "overrides": []},
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 7},
+      "id": 5,
+      "options": {"showHeader": true, "sortBy": [{"desc": true, "displayName": "served_at"}]},
+      "targets": [{"database": "default", "format": 1, "queryType": "sql", "rawSql": "SELECT served_at, symbol, horizon_minutes, action, risk_tier, decision_reason, round(probability_up, 3) AS probability_up, round(probability_down, 3) AS probability_down, round(expected_return_pct, 3) AS expected_return_pct, round(data_age_seconds, 0) AS data_age_seconds, model_id\nFROM crypto_prediction_signals FINAL\nWHERE $__timeFilter(served_at) AND symbol IN (${symbol:singlequote})\nORDER BY served_at DESC\nLIMIT 200", "refId": "A"}],
+      "title": "Audit tín hiệu read-only",
+      "type": "table"
+    },
+    {
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "ClickHouse"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+      "id": 6,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}, "tooltip": {"mode": "single"}},
+      "targets": [{"database": "default", "format": 1, "queryType": "sql", "rawSql": "SELECT served_at AS time, decision_reason, count() AS signal_count\nFROM crypto_prediction_signals FINAL\nWHERE $__timeFilter(served_at)\nGROUP BY time, decision_reason\nORDER BY time", "refId": "A"}],
+      "title": "Lý do quyết định / chặn tín hiệu",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": ["crypto", "prediction", "read-only", "mvp"],
+  "templating": {"list": [
+    {"allValue": "", "current": {"selected": true, "text": "All", "value": "$__all"}, "datasource": {"type": "grafana-clickhouse-datasource", "uid": "ClickHouse"}, "includeAll": true, "multi": true, "name": "symbol", "options": [], "query": "SELECT DISTINCT symbol FROM crypto_prediction_signals ORDER BY symbol", "refresh": 1, "type": "query"},
+    {"current": {"selected": true, "text": "15", "value": "15"}, "name": "horizon", "options": [{"selected": true, "text": "15", "value": "15"}, {"selected": false, "text": "60", "value": "60"}], "query": "15,60", "type": "custom"}
+  ]},
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "browser",
+  "title": "Crypto Prediction Signals (Read-only)",
+  "uid": "crypto-prediction-signals",
+  "version": 1
+}

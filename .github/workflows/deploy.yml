@@ -2,10 +2,59 @@ name: Crypto Pipeline CI/CD
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+
+permissions:
+  contents: read
+  security-events: write
 
 jobs:
+  test:
+    name: Validate pipeline artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run unit tests and compile checks
+        run: |
+          python -m unittest discover -s tests -v
+          python -m py_compile apps/event_contract.py apps/market_symbols.py apps/backfill_binance_klines.py apps/feature_contract.py apps/build_market_features.py apps/backtest_contract.py apps/train_baseline_models.py apps/model_registry.py apps/signal_contract.py apps/serve_predictions.py apps/publish_prediction_signals.py apps/producer.py apps/spark_streaming.py apps/spark_silver_aggregation.py apps/spark_gold_analytics.py
+      - name: Validate Grafana dashboard JSON
+        run: |
+          python -c "import json; from pathlib import Path; [json.loads(path.read_text(encoding='utf-8')) for path in Path('grafana/provisioning/dashboards').glob('*.json')]"
+      - name: Validate Docker Compose rendering
+        env:
+          MINIO_USER: validation-user
+          MINIO_PASS: validation-password
+          MINIO_ENDPOINT: http://minio:9000
+          CLICKHOUSE_USER: crypto_pipeline
+          CLICKHOUSE_PASS: validation-password
+          GRAFANA_PASS: validation-password
+          HOST_BIND_ADDRESS: 127.0.0.1
+        run: docker compose config --quiet
+
+  secret-scan:
+    name: Scan committed secrets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out full history for secret scanning
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan repository with Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   deploy:
+    needs: [test, secret-scan]
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     
     steps:
@@ -21,38 +70,103 @@ jobs:
         script: |
           cd ~/realtime-stream-crypto
           
-          git pull origin main
+          # 1. Tự động fetch và ép Cloud chuyển sang đúng nhánh vừa push code
+          git fetch origin
+          git checkout ${{ github.ref_name }}
+          git reset --hard origin/${{ github.ref_name }}
           
           echo "$ENV_CONTENTS" > .env
           chmod 600 .env
           
-          # 1. Diệt tiến trình Producer ở ngoài VPS
-          pgrep -f "producer.py" | grep -v $$ | xargs -r kill || true
+          # 2. Nạp biến môi trường từ .env ra máy ngoài VPS để chuẩn bị ép biến
+          export $(grep -v '^#' .env | xargs)
           
-          # 2. CHUI VÀO TRONG DOCKER ĐỂ DIỆT TẬN GỐC TIẾN TRÌNH SPARK NGẦM
+          docker compose up -d
+
+          wait_for_service() {
+            service="$1"
+            timeout_seconds="${2:-120}"
+            elapsed=0
+            while [ "$elapsed" -lt "$timeout_seconds" ]; do
+              health="$(docker inspect --format='{{.State.Health.Status}}' "$service" 2>/dev/null || true)"
+              if [ "$health" = "healthy" ]; then
+                echo "$service is healthy"
+                return 0
+              fi
+              if [ "$health" = "unhealthy" ]; then
+                echo "$service became unhealthy" >&2
+                return 1
+              fi
+              sleep 5
+              elapsed=$((elapsed + 5))
+            done
+            echo "Timed out waiting for $service to become healthy" >&2
+            return 1
+          }
+
+          wait_for_service minio
+          wait_for_service spark-master
+          wait_for_service clickhouse
+          wait_for_service grafana 180
+          
+          # 3. Tự động khởi tạo bảng ClickHouse sau khi dịch vụ sẵn sàng.
+          docker exec -i clickhouse clickhouse-client --user "$CLICKHOUSE_USER" --password "$CLICKHOUSE_PASS" < scripts/init_clickhouse.sql
+          
+          # 4. Quét tiến trình cũ để tránh tranh chấp checkpoint. Chờ chúng kết thúc
+          # trước khi nộp job replacement.
+          pgrep -f "producer.py" | grep -v $$ | xargs -r kill || true
           docker exec spark-master pkill -f "spark_streaming.py" || true
           docker exec spark-master pkill -f "spark_silver_aggregation.py" || true
-          sleep 5
+          docker exec spark-master pkill -f "spark_gold_analytics.py" || true
+          for attempt in $(seq 1 12); do
+            if ! docker exec spark-master pgrep -f "spark_(streaming|silver_aggregation|gold_analytics).py" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 5
+          done
           
           source venv/bin/activate
           pip install --upgrade pip
           pip install -r requirements.txt
           
-          # Bật lại Producer
+          # 5. Khởi chạy mạch nguồn Producer
           nohup python3 apps/producer.py > producer.log 2>&1 &
           
-          # Bật Bronze
-          nohup docker exec -i spark-master /opt/spark/bin/spark-submit \
-            --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4 \
+          # 6. Khởi chạy tầng BRONZE
+          nohup docker exec -i \
+            -e MINIO_ENDPOINT="$MINIO_ENDPOINT" \
+            -e MINIO_USER="$MINIO_USER" \
+            -e MINIO_PASS="$MINIO_PASS" \
+            spark-master /opt/spark/bin/spark-submit \
+            --driver-memory 2g \
+            --packages io.delta:delta-spark_2.12:3.2.0,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4 \
             /opt/spark/apps/spark_streaming.py > bronze.log 2>&1 &
           
-          # Xếp hàng đợi 15 giây né tranh chấp tải Jar và Checkpoint
-          sleep 15
-          
-          # Bật Silver
-          nohup docker exec -i spark-master /opt/spark/bin/spark-submit \
-            --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4 \
+          # 7. Khởi chạy tầng SILVER. Delta checkpoint đảm bảo job xử lý input
+          # đã commit mà không cần sleep phụ thuộc thứ tự.
+          nohup docker exec -i \
+            -e MINIO_ENDPOINT="$MINIO_ENDPOINT" \
+            -e MINIO_USER="$MINIO_USER" \
+            -e MINIO_PASS="$MINIO_PASS" \
+            spark-master /opt/spark/bin/spark-submit \
+            --driver-memory 2g \
+            --packages io.delta:delta-spark_2.12:3.2.0,org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4 \
             /opt/spark/apps/spark_silver_aggregation.py > silver.log 2>&1 &
             
-          sleep 1
-          ps -ef | grep python3 | grep -v grep
+          # 8. Khởi chạy tầng GOLD.
+          nohup docker exec -i \
+            -e MINIO_ENDPOINT="$MINIO_ENDPOINT" \
+            -e MINIO_USER="$MINIO_USER" \
+            -e MINIO_PASS="$MINIO_PASS" \
+            -e CLICKHOUSE_USER="$CLICKHOUSE_USER" \
+            -e CLICKHOUSE_PASS="$CLICKHOUSE_PASS" \
+            spark-master /opt/spark/bin/spark-submit \
+            --driver-memory 4g \
+            --packages com.clickhouse:clickhouse-jdbc:0.6.5,org.apache.httpcomponents.client5:httpclient5:5.2.1,org.apache.hadoop:hadoop-aws:3.3.4,io.delta:delta-spark_2.12:3.2.0 \
+            /opt/spark/apps/spark_gold_analytics.py > gold.log 2>&1 &
+
+          sleep 3
+          pgrep -f "producer.py" >/dev/null
+          docker exec spark-master pgrep -f "spark_streaming.py" >/dev/null
+          docker exec spark-master pgrep -f "spark_silver_aggregation.py" >/dev/null
+          docker exec spark-master pgrep -f "spark_gold_analytics.py" >/dev/null

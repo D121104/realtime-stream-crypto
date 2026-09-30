@@ -1,0 +1,51 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: crypto-prediction-operations
+    folder: Crypto Streaming
+    interval: 1m
+    rules:
+      - uid: crypto-prediction-data-stale
+        title: Crypto prediction data is stale
+        condition: B
+        data:
+          - refId: A
+            queryType: ""
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: ClickHouse
+            model:
+              database: default
+              format: 1
+              query: "SELECT toUnixTimestamp(now()) * 1000 AS time, coalesce(toUnixTimestamp(now()) - toUnixTimestamp(max(served_at)), 999999) AS value FROM crypto_prediction_signals FINAL"
+              refId: A
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              refId: B
+              expression: A
+              conditions:
+                - type: query
+                  evaluator:
+                    type: gt
+                    params: [300]
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    type: last
+                    params: []
+        noDataState: Alerting
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: "Prediction không có audit record mới trong hơn năm phút"
+          runbook_url: "https://github.com/D121104/realtime-stream-crypto/blob/develop/docs/p0-data-recovery-runbook.md"
+        labels:
+          service: crypto-streaming
+          component: prediction-serving
+          severity: warning

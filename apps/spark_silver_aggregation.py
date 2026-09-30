@@ -1,95 +1,125 @@
-from pyspark.sql import SparkSession
-from pyspark.sql.types import StructType, StructField, StringType, TimestampType, LongType, DoubleType
-from pyspark.sql.functions import col, to_date, from_unixtime, from_json, window, expr
+"""Silver layer: one-minute, event-time aggregates from the validated Bronze Delta table."""
+
 import os
+
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+from pyspark.sql.streaming import StreamingQueryListener
+
+BRONZE_PATH = "s3a://crypto-lake/bronze_delta/crypto_trades"
+SILVER_PATH = "s3a://crypto-lake/silver_delta/crypto_trades_aggregated"
+CHECKPOINT_PATH = "s3a://crypto-lake/checkpoints/silver_delta"
 
 minio_user = os.environ.get("MINIO_USER")
 minio_pass = os.environ.get("MINIO_PASS")
+minio_endpoint = os.environ.get("MINIO_ENDPOINT", "http://minio:9000")
 
-spark = SparkSession.builder \
-    .appName("Crypto-Silver-Aggregation") \
-    .master("spark://spark-master:7077") \
-    .config("spark.cores.max", "2") \
-    .config("spark.sql.caseSensitive", "true") \
-    .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.1,org.apache.hadoop:hadoop-aws:3.3.4") \
-    .config("spark.hadoop.fs.s3a.access.key", minio_user) \
-    .config("spark.hadoop.fs.s3a.secret.key", minio_pass) \
-    .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000") \
-    .config("spark.hadoop.fs.s3a.path.style.access", "true") \
-    .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
+spark = (
+    SparkSession.builder.appName("Crypto-Silver-Aggregation")
+    .master(os.environ.get("SPARK_MASTER_URL", "spark://spark-master:7077"))
+    .config("spark.cores.max", "4")
+    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+    .config("spark.jars.packages", "io.delta:delta-spark_2.12:3.2.0,org.apache.hadoop:hadoop-aws:3.3.4")
+    .config("spark.hadoop.fs.s3a.access.key", minio_user)
+    .config("spark.hadoop.fs.s3a.secret.key", minio_pass)
+    .config("spark.hadoop.fs.s3a.endpoint", minio_endpoint)
+    .config("spark.hadoop.fs.s3a.path.style.access", "true")
+    .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
     .getOrCreate()
+)
+spark.sparkContext.setLogLevel("WARN")
 
-spark.sparkContext.setLogLevel("ERROR")
+class SilverProgressListener(StreamingQueryListener):
+    """Log input and watermark progress without materializing streaming rows."""
 
-schema = StructType([
-    StructField("metadata", StructType([
-        StructField("event_id", StringType()),
-        StructField("event_timestamp", LongType()),
-        StructField("event_type", StringType()),
-        StructField("source", StringType()),
-        StructField("schema_version", StringType())
-    ]), True),
-    StructField("payload", StructType([
-        StructField("e", StringType(), True), # Loại sự kiện
-        StructField("E", LongType(), True),   # Event time từ Binance
-        StructField("s", StringType(), True), # Ký hiệu coin (e.g., BTCUSDT)
-        StructField("p", StringType(), True), # Giá (Dạng string từ Binance)
-        StructField("q", StringType(), True), # Khối lượng (Dạng string)
-        StructField("m", StringType(), True)  # Is buyer maker
-    ]), True)
-])
+    def onQueryStarted(self, event):
+        print(f"Silver query started: id={event.id}, run_id={event.runId}")
 
-kafka_df = spark.readStream \
-    .format("kafka") \
-    .option("kafka.bootstrap.servers", "kafka:29092") \
-    .option("subscribe", "crypto-raw-data") \
-    .option("startingOffsets", "latest") \
-    .load()
+    def onQueryProgress(self, event):
+        progress = event.progress
+        print(
+            "Silver batch progress: "
+            f"batch_id={progress.batchId}, input_rows={progress.numInputRows}, "
+            f"watermark={progress.eventTime.get('watermark', 'n/a')}, "
+            f"input_rows_per_second={progress.inputRowsPerSecond:.2f}, "
+            f"processed_rows_per_second={progress.processedRowsPerSecond:.2f}"
+        )
 
-parsed_df = kafka_df \
-    .withColumn("value_string", col('value').cast('string')) \
-    .withColumn("json_data", from_json(col('value_string'), schema)) \
-    .withColumn("event_time", from_unixtime(col('json_data.metadata.event_timestamp')/1000).cast("timestamp")) \
-    .withColumn("symbol", col("json_data.payload.s")) \
-    .withColumn("price", col("json_data.payload.p").cast("double")) \
-    .withColumn("quantity", col("json_data.payload.q").cast("double")) \
-    .withColumn("event_type", col("json_data.payload.e")) \
-    .withColumn("event_timestamp", col("json_data.metadata.event_timestamp"))
+    def onQueryTerminated(self, event):
+        print(f"Silver query terminated: id={event.id}, exception={event.exception}")
 
-aggregate_df = parsed_df \
-    .withWatermark("event_time", "5 minutes" ) \
-    .groupBy(
-        window(col("event_time"), "1 minutes"),
-        col("symbol")
-    )\
-    .agg(
-        expr("min(price)").alias("low_price"),
-        expr("max(price)").alias("high_price"),
-        expr("sum(quantity)").alias("total_volume"),
-        expr("sum(price * quantity) / sum(quantity)").alias("vwap"),
-        expr("count(1)").alias("trade_count")
-    )\
-    .select(
-        col("window.start").alias("window_start"),
-        col("window.end").alias("window_end"),
-        col("symbol"),
-        col("low_price"),
-        col("high_price"),
-        col("total_volume"),
-        col("vwap"),
-        col("trade_count"),
-        to_date(col("window_start")).alias("event_date")
+    def onQueryIdle(self, event):
+        pass
+
+
+spark.streams.addListener(SilverProgressListener())
+
+# A reset Silver checkpoint must not replay historical Bronze aggregates.
+bronze_stream = (
+    spark.readStream.format("delta")
+    .option("startingVersion", "latest")
+    .load(BRONZE_PATH)
+)
+
+# Historical Bronze data has used both epoch seconds and epoch milliseconds.
+# Normalize based on magnitude; dividing seconds by 1000 would turn 2026 data
+# into 1970 and make the watermark discard every incoming trade.
+if "event_time" not in bronze_stream.columns:
+    event_timestamp = F.col("event_timestamp").cast("long")
+    bronze_stream = bronze_stream.withColumn(
+        "event_time",
+        F.when(
+            event_timestamp >= F.lit(100_000_000_000),
+            (event_timestamp / F.lit(1000)).cast("timestamp"),
+        ).otherwise(event_timestamp.cast("timestamp")),
     )
 
-query = aggregate_df.writeStream\
-    .format("parquet")\
-    .outputMode("append")\
-    .option("path", "s3a://crypto-lake/silver/crypto_trades_aggregated")\
-    .option("checkpointLocation", "s3a://crypto-lake/checkpoints/crypto_trades_aggregated")\
-    .partitionBy("event_date")\
-    .trigger(processingTime="60 seconds")\
+aggregated_trades = (
+    bronze_stream.filter(
+        F.col("event_id").isNotNull()
+        & F.col("event_time").isNotNull()
+        & F.col("symbol").isNotNull()
+        & (F.col("price") > 0)
+        & (F.col("quantity") > 0)
+    )
+    .withWatermark("event_time", os.environ.get("SILVER_WATERMARK", "5 minutes"))
+    .dropDuplicates(["event_id"])
+    .groupBy(F.window("event_time", "1 minute"), F.col("symbol"))
+    .agg(
+        F.avg("price").alias("avg_price"),
+        F.min("price").alias("low_price"),
+        F.max("price").alias("high_price"),
+        F.sum("quantity").alias("total_volume"),
+        (F.sum(F.col("price") * F.col("quantity")) / F.sum("quantity")).alias("vwap"),
+        F.count("event_id").cast("long").alias("trade_count"),
+    )
+    # Preserve the existing Silver Delta schema: price/volume aggregates are
+    # DOUBLE and trade_count is LONG (verified from the current Delta metadata).
+    .select(
+        F.col("window.start").alias("window_start"),
+        F.col("window.end").alias("window_end"),
+        "symbol",
+        F.col("avg_price").cast("double").alias("avg_price"),
+        F.col("low_price").cast("double").alias("low_price"),
+        F.col("high_price").cast("double").alias("high_price"),
+        F.col("total_volume").cast("double").alias("total_volume"),
+        F.col("vwap").cast("double").alias("vwap"),
+        F.col("trade_count").cast("long").alias("trade_count"),
+        F.to_date("window.start").alias("event_date"),
+    )
+)
+
+query = (
+    aggregated_trades.writeStream.format("delta")
+    .outputMode("append")
+    .option("path", SILVER_PATH)
+    .option("checkpointLocation", CHECKPOINT_PATH)
+    # The existing Silver Delta table is partitioned only by event_date.
+    .partitionBy("event_date")
+    .trigger(processingTime=os.environ.get("SILVER_TRIGGER", "60 seconds"))
     .start()
+)
 
-
-print("Spark Streaming is running...")
+print("Silver aggregation streaming is running...")
 query.awaitTermination()
